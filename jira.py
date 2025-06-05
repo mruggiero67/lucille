@@ -1,7 +1,22 @@
 import requests
 from requests.auth import HTTPBasicAuth
+import argparse
 import json
+import logging
+from pathlib import Path, PosixPath
+import datetime
+from re import sub
+import pandas as pd
 import yaml
+
+# TODO save to a Pandas Dataframe
+# TODO save to a CSV
+
+
+logging.basicConfig(
+    format="%(levelname)-10s %(asctime)s %(filename)s %(lineno)d %(message)s",
+    level=logging.DEBUG
+)
 
 def get_all_issues(url,
                    auth,
@@ -36,19 +51,88 @@ def get_all_issues(url,
     else:
         return collected_issues
 
-# Example usage
-if __name__ == "__main__":
-    CONFIG = "/Users/michael@jaris.io/bin/jira.yaml"
 
-    with open(CONFIG, mode="rt", encoding="utf-8") as file:
+def flatten_issue(issue):
+    fields = issue.get("fields", {})
+    return {
+        "issue_key": issue.get("key"),
+        "issue_type": fields.get("issuetype", {}).get("name"),
+        "parent_key": fields.get("parent", {}).get("key"),
+        "parent": fields.get("parent", {}).get("fields", {}).get("summary"),
+        "assignee": fields.get("asignee", {}).get("displayName"),
+        "summary": fields.get("summary"),
+        "project_key": fields.get("project", {}).get("key"),
+        "status": fields.get("statusCategory", {}).get("name"),
+        "resolution": fields.get("resolution", {}).get("name"),
+        "created": fields.get("created"),
+        "updated": fields.get("updated")
+    }
+
+def jira_issues_to_dataframe(jira_data):
+    flat_data = [flatten_issue(issue) for issue in jira_data]
+    return pd.DataFrame(flat_data)
+
+
+def snake_case(s: str) -> str:
+    # Replace hyphens with spaces, then apply regular expression substitutions for title case conversion
+    # and add an underscore between words, finally convert the result to lowercase
+    return "_".join(
+        sub(
+            "([A-Z][a-z]+)",
+            r" \1",
+            sub("([A-Z]+)", r" \1", s.replace("-", " ").replace("'", "")),
+        ).split()
+    ).lower()
+
+
+def canonical_date(dt: datetime) -> str:
+    try:
+        return dt.strftime("%Y_%m_%d")
+    except AttributeError as e:
+        raise AttributeError(f"arg '{dt}' not a valid datetime")
+
+
+def mk_filepath(base_dir, label, file_extension, dt=datetime.datetime.now()) -> PosixPath:
+    formatted_date = canonical_date(dt)
+    formatted_label = snake_case(label)
+    p = Path(base_dir)
+    return p / f"{formatted_date}_{formatted_label}{file_extension}"
+
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(
+        description="Run Jira query stored in a conifg"
+    )
+    parser.add_argument("config", type=str, help="path to config file")
+    args = parser.parse_args()
+    config_file = args.config
+
+
+    with open(config_file, mode="rt", encoding="utf-8") as file:
         config = yaml.safe_load(file)
 
+    DEBUGGING = config.get("debugging", False)
     auth = HTTPBasicAuth(config["email"], config["api_token"])
     url = config["url"]
+    directory = config.get("directory", "")
 
-    jql = 'parent=SSJ-753 AND status != "Done"'
+    jql= config.get("queries", {}).get("last_month")
 
-    issues = get_all_issues(url, auth, jql)
-    print(f"Retrieved {len(issues)} issues.")
-    for issue in issues:
-        print(issue['key'], "-", issue['fields']['summary'])
+    fields = "*all"
+    issues = get_all_issues(url, auth, jql, fields)
+    if DEBUGGING:
+        # save the issues
+        test_filepath = f"{directory}/test_jira.json"
+        with open(test_filepath, "w") as file:
+            json.dump(issues, file)
+
+        # now read the file back into JSON
+        with open(test_filepath) as f:
+            jira_json = json.load(f)
+
+        df = jira_issues_to_dataframe(jira_json)
+        print(df.head())
+
+        csv_filepath = mk_filepath(directory, "jira query results", ".csv")
+        df.to_csv(csv_filepath, index=False)
