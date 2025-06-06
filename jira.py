@@ -9,9 +9,6 @@ from re import sub
 import pandas as pd
 import yaml
 
-# TODO save to a Pandas Dataframe
-# TODO save to a CSV
-
 
 logging.basicConfig(
     format="%(levelname)-10s %(asctime)s %(filename)s %(lineno)d %(message)s",
@@ -22,18 +19,22 @@ def get_all_issues(url,
                    auth,
                    jql,
                    fields="summary",
-                   max_results=50,
-                   start_at=0,
+                   max_results=5000,
+                   next_page_token=None,
                    collected_issues=None):
     if collected_issues is None:
         collected_issues = []
 
     query = {
         'jql': jql,
-        'startAt': start_at,
         'maxResults': max_results,
         'fields': fields
     }
+
+    # Include nextPageToken if provided
+    if next_page_token:
+        query["nextPageToken"] = next_page_token
+
     headers = {
         "Accept": "application/json"
     }
@@ -46,8 +47,10 @@ def get_all_issues(url,
     issues = data.get("issues", [])
     collected_issues.extend(issues)
 
-    if start_at + max_results < data.get("total", 0):
-        return get_all_issues(jql, fields, max_results, start_at + max_results, collected_issues)
+    logging.debug(f"max_results: {max_results}, next_page_token: {next_page_token}")
+    next_page_token = data.get("nextPageToken")
+    if next_page_token:
+        return get_all_issues(url, auth, jql, fields, max_results, next_page_token, collected_issues)
     else:
         return collected_issues
 
@@ -108,11 +111,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     config_file = args.config
 
-
     with open(config_file, mode="rt", encoding="utf-8") as file:
         config = yaml.safe_load(file)
 
-    DEBUGGING = config.get("debugging", False)
     auth = HTTPBasicAuth(config["email"], config["api_token"])
     url = config["url"]
     directory = config.get("directory", "")
@@ -121,18 +122,10 @@ if __name__ == "__main__":
 
     fields = "*all"
     issues = get_all_issues(url, auth, jql, fields)
-    if DEBUGGING:
-        # save the issues
-        test_filepath = f"{directory}/test_jira.json"
-        with open(test_filepath, "w") as file:
-            json.dump(issues, file)
 
-        # now read the file back into JSON
-        with open(test_filepath) as f:
-            jira_json = json.load(f)
+    df = jira_issues_to_dataframe(issues)
+    print(df.head())
+    print(df.shape)
 
-        df = jira_issues_to_dataframe(jira_json)
-        print(df.head())
-
-        csv_filepath = mk_filepath(directory, "jira query results", ".csv")
-        df.to_csv(csv_filepath, index=False)
+    csv_filepath = mk_filepath(directory, "jira query results", ".csv")
+    df.to_csv(csv_filepath, index=False)
