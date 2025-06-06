@@ -12,36 +12,35 @@ import yaml
 
 logging.basicConfig(
     format="%(levelname)-10s %(asctime)s %(filename)s %(lineno)d %(message)s",
-    level=logging.DEBUG
+    level=logging.DEBUG,
 )
 
-def get_all_issues(url,
-                   auth,
-                   jql,
-                   fields="summary",
-                   max_results=5000,
-                   next_page_token=None,
-                   collected_issues=None):
+
+def get_all_issues(
+    url,
+    auth,
+    jql,
+    fields="summary",
+    max_results=5000,
+    next_page_token=None,
+    collected_issues=None,
+):
     if collected_issues is None:
         collected_issues = []
 
-    query = {
-        'jql': jql,
-        'maxResults': max_results,
-        'fields': fields
-    }
+    query = {"jql": jql, "maxResults": max_results, "fields": fields}
 
     # Include nextPageToken if provided
     if next_page_token:
         query["nextPageToken"] = next_page_token
 
-    headers = {
-        "Accept": "application/json"
-    }
+    headers = {"Accept": "application/json"}
 
     response = requests.get(url, headers=headers, params=query, auth=auth)
     if response.status_code != 200:
-        raise Exception(f"Failed to fetch issues: {response.status_code}, {response.text}")
+        raise Exception(
+            f"Failed to fetch issues: {response.status_code}, {response.text}"
+        )
 
     data = response.json()
     issues = data.get("issues", [])
@@ -50,7 +49,9 @@ def get_all_issues(url,
     logging.debug(f"max_results: {max_results}, next_page_token: {next_page_token}")
     next_page_token = data.get("nextPageToken")
     if next_page_token:
-        return get_all_issues(url, auth, jql, fields, max_results, next_page_token, collected_issues)
+        return get_all_issues(
+            url, auth, jql, fields, max_results, next_page_token, collected_issues
+        )
     else:
         return collected_issues
 
@@ -68,8 +69,9 @@ def flatten_issue(issue):
         "status": fields.get("statusCategory", {}).get("name"),
         "resolution": fields.get("resolution", {}).get("name"),
         "created": fields.get("created"),
-        "updated": fields.get("updated")
+        "updated": fields.get("updated"),
     }
+
 
 def jira_issues_to_dataframe(jira_data):
     flat_data = [flatten_issue(issue) for issue in jira_data]
@@ -95,7 +97,9 @@ def canonical_date(dt: datetime) -> str:
         raise AttributeError(f"arg '{dt}' not a valid datetime")
 
 
-def mk_filepath(base_dir, label, file_extension, dt=datetime.datetime.now()) -> PosixPath:
+def mk_filepath(
+    base_dir, label, file_extension, dt=datetime.datetime.now()
+) -> PosixPath:
     formatted_date = canonical_date(dt)
     formatted_label = snake_case(label)
     p = Path(base_dir)
@@ -104,9 +108,7 @@ def mk_filepath(base_dir, label, file_extension, dt=datetime.datetime.now()) -> 
 
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser(
-        description="Run Jira query stored in a conifg"
-    )
+    parser = argparse.ArgumentParser(description="Run Jira query stored in a conifg")
     parser.add_argument("config", type=str, help="path to config file")
     args = parser.parse_args()
     config_file = args.config
@@ -118,7 +120,7 @@ if __name__ == "__main__":
     url = config["url"]
     directory = config.get("directory", "")
 
-    jql= config.get("queries", {}).get("last_month")
+    jql = config.get("queries", {}).get("last_month")
 
     fields = "*all"
     issues = get_all_issues(url, auth, jql, fields)
