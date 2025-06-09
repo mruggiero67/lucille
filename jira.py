@@ -62,12 +62,14 @@ def flatten_issue(issue):
         "issue_key": issue.get("key"),
         "issue_type": fields.get("issuetype", {}).get("name"),
         "parent_key": fields.get("parent", {}).get("key"),
+        "parent_summary": fields.get("parent", {}).get("fields", {}).get("summary", "n/a") if fields.get("parent") else "n/a",
         "parent": fields.get("parent", {}).get("fields", {}).get("summary"),
-        "assignee": fields.get("asignee", {}).get("displayName"),
+        "assignee": fields.get("assignee", {}).get("displayName", 'n/a') if fields.get("assignee") else 'n/a',
+        "creator": fields.get("creator", {}).get("displayName", 'n/a') if fields.get("creator") else 'n/a',
         "summary": fields.get("summary"),
         "project_key": fields.get("project", {}).get("key"),
         "status": fields.get("statusCategory", {}).get("name"),
-        "resolution": fields.get("resolution", {}).get("name"),
+        "resolution": fields.get("resolution", {}).get("name") if fields.get("resolution") else "n/a",
         "created": fields.get("created"),
         "updated": fields.get("updated"),
     }
@@ -110,8 +112,10 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Run Jira query stored in a conifg")
     parser.add_argument("config", type=str, help="path to config file")
+    parser.add_argument("query", type=str, help="key of the query you want to run")
     args = parser.parse_args()
     config_file = args.config
+    query_key = args.query if args.query else "last_month"
 
     with open(config_file, mode="rt", encoding="utf-8") as file:
         config = yaml.safe_load(file)
@@ -120,7 +124,8 @@ if __name__ == "__main__":
     url = config["url"]
     directory = config.get("directory", "")
 
-    jql = config.get("queries", {}).get("last_month")
+    jql = config.get("queries", {}).get(query_key)
+    logging.debug(f"query: '{jql}'")
 
     fields = "*all"
     issues = get_all_issues(url, auth, jql, fields)
