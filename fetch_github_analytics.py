@@ -1004,6 +1004,7 @@ if __name__ == "__main__":
         config = load_config("config.yaml")
 
         github_token = config.get("github_token")
+        csv_directory = config.get("csv_directory")
         if not github_token:
             logger.error("github_token not found in config.yaml")
             raise ValueError("github_token is required in config.yaml")
@@ -1031,7 +1032,7 @@ if __name__ == "__main__":
             )
 
             # Create summary CSV files
-            summary_files = collector.create_summary_csvs()
+            summary_files = collector.create_summary_csvs(csv_directory)
 
             # Print overall statistics
             collector.print_overall_summary()
