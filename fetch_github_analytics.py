@@ -203,6 +203,30 @@ class GitHubMetricsExtractor:
         url = f"{self.base_url}/repos/{self.org}/{self.repo}/deployments/{deployment_id}/statuses"
         return self._paginated_request(url)
 
+    def get_releases(self, since_date: datetime) -> List[Dict]:
+        """Get release data"""
+        url = f"{self.base_url}/repos/{self.org}/{self.repo}/releases"
+
+        print(f"Fetching releases...")
+        all_releases = self._paginated_request(url)
+
+        # Filter by date
+        filtered_releases = []
+        for release in all_releases:
+            try:
+                created_at = self._parse_github_date(release["created_at"])
+                # Make since_date timezone-aware if it isn't already
+                if since_date.tzinfo is None:
+                    since_date = since_date.replace(tzinfo=created_at.tzinfo)
+
+                if created_at >= since_date:
+                    filtered_releases.append(release)
+            except Exception as e:
+                print(f"Warning: Skipping release due to date parsing error: {e}")
+                continue
+
+        return filtered_releases
+
     def collect_all_metrics(self, months_back: int = 6) -> Dict:
         """Collect all metrics for the specified time period"""
         since_date = datetime.now() - timedelta(days=months_back * 30)
@@ -235,6 +259,9 @@ class GitHubMetricsExtractor:
         print("Fetching deployment statuses...")
         for deployment in metrics["deployments"]:
             deployment["statuses"] = self.get_deployment_statuses(deployment["id"])
+
+        # Collect releases
+        metrics["releases"] = self.get_releases(since_date)
 
         return metrics
 
@@ -452,6 +479,54 @@ class GitHubMetricsExtractor:
                         print(f"Warning: Skipping deployment due to error: {e}")
             csv_files["deployments"] = deployments_file
 
+        # Export releases
+        if metrics.get("releases"):
+            releases_file = f"{output_dir}/releases_{repo_safe_name}_{timestamp}.csv"
+            with open(releases_file, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(
+                    [
+                        "repo",
+                        "release_id",
+                        "tag_name",
+                        "name",
+                        "draft",
+                        "prerelease",
+                        "created_at",
+                        "published_at",
+                        "author",
+                        "body",
+                        "target_commitish",
+                    ]
+                )
+
+                for release in metrics["releases"]:
+                    try:
+                        writer.writerow(
+                            [
+                                f"{self.org}/{self.repo}",
+                                release["id"],
+                                release["tag_name"],
+                                release.get("name", "")[:200],
+                                release["draft"],
+                                release["prerelease"],
+                                release["created_at"],
+                                release.get("published_at", ""),
+                                (
+                                    release["author"]["login"]
+                                    if release.get("author")
+                                    else "unknown"
+                                ),
+                                release.get("body", "")[:500]
+                                .replace("\n", " ")
+                                .replace("\r", " "),
+                                release.get("target_commitish", ""),
+                            ]
+                        )
+                    except Exception as e:
+                        print(f"Warning: Skipping release due to error: {e}")
+            csv_files["releases"] = releases_file
+
         print(f"CSV files exported to {output_dir}/")
         for data_type, filename in csv_files.items():
             print(f"  {data_type}: {filename}")
@@ -624,6 +699,57 @@ class MultiRepoMetricsCollector:
                         print(f"Warning: Skipping deployment in summary: {e}")
         summary_files["deployments"] = deployments_file
 
+        # Combined releases across all repos
+        releases_file = f"{output_dir}/summary_releases_{timestamp}.csv"
+        with open(releases_file, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(
+                [
+                    "repo",
+                    "release_id",
+                    "tag_name",
+                    "name",
+                    "draft",
+                    "prerelease",
+                    "created_at",
+                    "published_at",
+                    "author",
+                    "body",
+                    "target_commitish",
+                ]
+            )
+
+            for result in self.results:
+                repo_name = (
+                    f"{result['repo_config']['org']}/{result['repo_config']['repo']}"
+                )
+                for release in result.get("releases", []):
+                    try:
+                        writer.writerow(
+                            [
+                                repo_name,
+                                release["id"],
+                                release["tag_name"],
+                                release.get("name", "")[:200],
+                                release["draft"],
+                                release["prerelease"],
+                                release["created_at"],
+                                release.get("published_at", ""),
+                                (
+                                    release["author"]["login"]
+                                    if release.get("author")
+                                    else "unknown"
+                                ),
+                                release.get("body", "")[:500]
+                                .replace("\n", " ")
+                                .replace("\r", " "),
+                                release.get("target_commitish", ""),
+                            ]
+                        )
+                    except Exception as e:
+                        print(f"Warning: Skipping release in summary: {e}")
+        summary_files["releases"] = releases_file
+
         # Repository summary statistics
         repo_summary_file = f"{output_dir}/repository_summary_{timestamp}.csv"
         with open(repo_summary_file, "w", newline="", encoding="utf-8") as f:
@@ -634,6 +760,7 @@ class MultiRepoMetricsCollector:
                     "total_commits",
                     "total_prs",
                     "total_workflow_runs",
+                    "total_releases",
                     "total_deployments",
                     "unique_authors",
                     "date_range_start",
@@ -660,6 +787,7 @@ class MultiRepoMetricsCollector:
                         len(result.get("commits", [])),
                         len(result.get("pull_requests", [])),
                         len(result.get("workflow_runs", [])),
+                        len(result.get("releases", [])),
                         len(result.get("deployments", [])),
                         len(authors),
                         result["date_range"]["since"],
@@ -674,88 +802,38 @@ class MultiRepoMetricsCollector:
 
         return summary_files
 
-    def print_overall_summary(self):
-        """Print high-level statistics across all repositories"""
-        if not self.results:
-            logger.warning("No results to summarize")
-            return
+    def analyze_repository_metrics(self, metrics: Dict) -> Dict:
+        """Analyze metrics for a single repository including lead times"""
+        analysis = {
+            "repo": metrics["repo"],
+            "basic_stats": {},
+            "deployment_analysis": {},
+            "release_analysis": {},
+            "contributor_analysis": {},
+        }
 
-        logger.info("=" * 60)
-        logger.info(f"OVERALL SUMMARY - {len(self.results)} Repositories")
-        logger.info("=" * 60)
+        commits = metrics.get("commits", [])
+        deployments = metrics.get("deployments", [])
+        releases = metrics.get("releases", [])
 
-        # Calculate totals across all repositories
-        total_commits = 0
-        total_deployments = 0
-        total_prs = 0
-        total_workflows = 0
-        all_authors = set()
-
-        # Flatten all commits and deployments for analysis
-        all_commits = []
-        all_deployments = []
-
-        for result in self.results:
-            # Count items in each repository
-            repo_commits = result.get("commits", [])
-            repo_deployments = result.get("deployments", [])
-            repo_prs = result.get("pull_requests", [])
-            repo_workflows = result.get("workflow_runs", [])
-
-            # Add to totals
-            total_commits += len(repo_commits)
-            total_deployments += len(repo_deployments)
-            total_prs += len(repo_prs)
-            total_workflows += len(repo_workflows)
-
-            # Collect all commits and deployments for analysis
-            all_commits.extend(repo_commits)
-            all_deployments.extend(repo_deployments)
-
-            # Collect unique authors from commits
-            for commit in repo_commits:
-                try:
-                    author_name = commit["commit"]["author"]["name"]
-                    all_authors.add(author_name)
-                except (KeyError, TypeError):
-                    continue
-
-        # Log summary statistics
-        logger.info(f"Total Commits: {total_commits:,}")
-        logger.info(f"Total Deployments: {total_deployments:,}")
-        logger.info(f"Total Pull Requests: {total_prs:,}")
-        logger.info(f"Total Workflow Runs: {total_workflows:,}")
-        logger.info(f"Unique Contributors: {len(all_authors)}")
-
-        # Log per-repository breakdown
-        logger.info("Per Repository Breakdown:")
-        for result in self.results:
-            repo_config = result.get("repo_config", {})
-            org = repo_config.get("org", "unknown")
-            repo = repo_config.get("repo", "unknown")
-            repo_name = f"{org}/{repo}"
-
-            commits_count = len(result.get("commits", []))
-            deployments_count = len(result.get("deployments", []))
-
-            logger.info(
-                f"  {repo_name}: {commits_count} commits, {deployments_count} deployments"
-            )
-
-        # Basic analysis of lead times from commits to deployments
-        print(f"\nBasic Analysis:")
-        print(f"Total commits: {len(all_commits)}")
-        print(f"Total deployments: {len(all_deployments)}")
+        # Basic statistics
+        analysis["basic_stats"] = {
+            "total_commits": len(commits),
+            "total_deployments": len(deployments),
+            "total_releases": len(releases),
+            "total_prs": len(metrics.get("pull_requests", [])),
+            "total_workflow_runs": len(metrics.get("workflow_runs", [])),
+        }
 
         # Analyze deployment frequency
-        if all_deployments:
+        if deployments:
             deployment_dates = []
-            for d in all_deployments:
+            for d in deployments:
                 try:
-                    date_obj = date_parser.parse(d["created_at"])
+                    date_obj = self._parse_github_date(d["created_at"])
                     deployment_dates.append(date_obj)
                 except Exception as e:
-                    print(f"Warning: Could not parse deployment date: {e}")
+                    logger.warning(f"Could not parse deployment date: {e}")
                     continue
 
             deployment_dates.sort()
@@ -767,37 +845,156 @@ class MultiRepoMetricsCollector:
                 intervals.append(interval)
 
             if intervals:
-                avg_interval = sum(intervals) / len(intervals)
-                print(f"Average days between deployments: {avg_interval:.1f}")
-                print(
-                    f"Deployment frequency: {len(all_deployments)} deployments in {len(set(d.date() for d in deployment_dates))} unique days"
-                )
+                analysis["deployment_analysis"] = {
+                    "avg_days_between_deployments": sum(intervals) / len(intervals),
+                    "min_days_between_deployments": min(intervals),
+                    "max_days_between_deployments": max(intervals),
+                    "deployments_per_month": len(deployments)
+                    / 6,  # Assuming 6 months of data
+                }
 
-        # Analyze commit patterns
-        commit_authors = {}
-        if all_commits:
-            for commit in all_commits:
+        # Analyze release frequency
+        if releases:
+            release_dates = []
+            for r in releases:
                 try:
-                    author = commit["commit"]["author"]["name"]
-                    commit_authors[author] = commit_authors.get(author, 0) + 1
-                except (KeyError, TypeError):
+                    date_obj = self._parse_github_date(r["created_at"])
+                    release_dates.append(date_obj)
+                except Exception as e:
+                    logger.warning(f"Could not parse release date: {e}")
                     continue
 
-            print(f"\nTop contributors by commit count:")
+            release_dates.sort()
+
+            # Calculate days between releases
+            intervals = []
+            for i in range(1, len(release_dates)):
+                interval = (release_dates[i] - release_dates[i - 1]).days
+                intervals.append(interval)
+
+            if intervals:
+                analysis["release_analysis"] = {
+                    "avg_days_between_releases": sum(intervals) / len(intervals),
+                    "min_days_between_releases": min(intervals),
+                    "max_days_between_releases": max(intervals),
+                    "releases_per_month": len(releases)
+                    / 6,  # Assuming 6 months of data
+                }
+
+        # Analyze commit patterns and contributors
+        if commits:
+            commit_authors = {}
+            for commit in commits:
+                author = commit["commit"]["author"]["name"]
+                commit_authors[author] = commit_authors.get(author, 0) + 1
+
             sorted_authors = sorted(
                 commit_authors.items(), key=lambda x: x[1], reverse=True
             )
-            for author, count in sorted_authors[:10]:
-                print(f"  {author}: {count} commits")
 
-        return {
-            "total_commits": len(all_commits),
-            "total_deployments": len(all_deployments),
-            "commit_authors": commit_authors,
-            "deployment_frequency": (
-                len(all_deployments) / 6 if all_deployments else 0
-            ),  # per month
-        }
+            analysis["contributor_analysis"] = {
+                "total_contributors": len(commit_authors),
+                "top_contributors": dict(sorted_authors[:10]),
+                "commits_per_contributor": (
+                    sum(commit_authors.values()) / len(commit_authors)
+                    if commit_authors
+                    else 0
+                ),
+            }
+
+        return analysis
+
+    def _parse_github_date(self, date_string: str) -> datetime:
+        """Safely parse GitHub's ISO 8601 date strings"""
+        try:
+            return date_parser.parse(date_string)
+        except Exception:
+            try:
+                if date_string.endswith("Z"):
+                    date_string = date_string[:-1] + "+00:00"
+                return datetime.fromisoformat(date_string)
+            except Exception as e:
+                logger.warning(f"Could not parse date '{date_string}': {e}")
+                return datetime.now()
+
+    def print_overall_summary(self):
+        """Print high-level statistics across all repositories"""
+        if not self.results:
+            logger.warning("No results to summarize")
+            return
+
+        logger.info("=" * 60)
+        logger.info(f"OVERALL SUMMARY - {len(self.results)} Repositories")
+        logger.info("=" * 60)
+
+        total_commits = sum(len(result.get("commits", [])) for result in self.results)
+        total_releases = sum(len(result.get("releases", [])) for result in self.results)
+        total_prs = sum(len(result.get("pull_requests", [])) for result in self.results)
+        total_workflows = sum(
+            len(result.get("workflow_runs", [])) for result in self.results
+        )
+        total_deployments = sum(
+            len(result.get("deployments", [])) for result in self.results
+        )
+
+        # Collect all unique authors across repos
+        all_authors = set()
+        for result in self.results:
+            for commit in result.get("commits", []):
+                try:
+                    all_authors.add(commit["commit"]["author"]["name"])
+                except (KeyError, TypeError):
+                    pass
+
+        logger.info(f"Total Commits: {total_commits:,}")
+        logger.info(f"Total Releases: {total_releases:,}")
+        logger.info(f"Total Pull Requests: {total_prs:,}")
+        logger.info(f"Total Workflow Runs: {total_workflows:,}")
+        logger.info(f"Total Deployments: {total_deployments:,}")
+        logger.info(f"Unique Contributors: {len(all_authors)}")
+
+        logger.info("\nPer Repository Breakdown:")
+        for result in self.results:
+            repo_name = (
+                f"{result['repo_config']['org']}/{result['repo_config']['repo']}"
+            )
+            commits = len(result.get("commits", []))
+            releases = len(result.get("releases", []))
+            deployments = len(result.get("deployments", []))
+            logger.info(
+                f"  {repo_name}: {commits} commits, {releases} releases, {deployments} deployments"
+            )
+
+        # Analyze each repository
+        logger.info("\nDetailed Repository Analysis:")
+        for result in self.results:
+            analysis = self.analyze_repository_metrics(result)
+            repo_name = analysis["repo"]
+            logger.info(f"\n  {repo_name}:")
+
+            if analysis["deployment_analysis"]:
+                logger.info(
+                    f"    Avg days between deployments: {analysis['deployment_analysis']['avg_days_between_deployments']:.1f}"
+                )
+                logger.info(
+                    f"    Deployments per month: {analysis['deployment_analysis']['deployments_per_month']:.1f}"
+                )
+
+            if analysis["release_analysis"]:
+                logger.info(
+                    f"    Avg days between releases: {analysis['release_analysis']['avg_days_between_releases']:.1f}"
+                )
+                logger.info(
+                    f"    Releases per month: {analysis['release_analysis']['releases_per_month']:.1f}"
+                )
+
+            if analysis["contributor_analysis"]:
+                logger.info(
+                    f"    Total contributors: {analysis['contributor_analysis']['total_contributors']}"
+                )
+                logger.info(
+                    f"    Top contributor: {list(analysis['contributor_analysis']['top_contributors'].items())[0] if analysis['contributor_analysis']['top_contributors'] else 'N/A'}"
+                )
 
 
 # Example usage
@@ -853,12 +1050,12 @@ if __name__ == "__main__":
                 "commits_df['author_date'] = pd.to_datetime(commits_df['author_date'])"
             )
             logger.info("")
-            logger.info("# Load deployments across all repos")
+            logger.info("# Load releases across all repos")
             logger.info(
-                f"deployments_df = pd.read_csv('{summary_files.get('deployments', 'summary_deployments.csv')}')"
+                f"releases_df = pd.read_csv('{summary_files.get('releases', 'summary_releases.csv')}')"
             )
             logger.info(
-                "deployments_df['created_at'] = pd.to_datetime(deployments_df['created_at'])"
+                "releases_df['created_at'] = pd.to_datetime(releases_df['created_at'])"
             )
             logger.info("")
             logger.info("# Load repository summary")
