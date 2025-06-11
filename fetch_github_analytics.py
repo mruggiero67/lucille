@@ -8,6 +8,7 @@ import time
 from dateutil import parser as date_parser
 import os
 import logging
+import argparse
 import yaml
 import traceback
 
@@ -997,26 +998,24 @@ class MultiRepoMetricsCollector:
                 )
 
 
-# Example usage
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Grab wide-ranging GitHub data, store as CSV")
+    parser.add_argument("config", type=str, help="path to config file")
+    args = parser.parse_args()
+    config_file = args.config
+
     try:
         # Load configuration from YAML file
-        config = load_config("config.yaml")
+        config = load_config(config_file)
 
         github_token = config.get("github_token")
         csv_directory = config.get("csv_directory")
         if not github_token:
-            logger.error("github_token not found in config.yaml")
-            raise ValueError("github_token is required in config.yaml")
+            logger.error(f"github_token not found in {config_file}")
+            raise ValueError(f"github_token is required in {config_file}")
 
         # Get repositories from config, with fallback to examples
-        repositories = config.get(
-            "repositories",
-            [
-                {"org": "facebook", "repo": "react"},
-                {"org": "microsoft", "repo": "vscode"},
-            ],
-        )
+        repositories = config.get("repositories")
 
         logger.info(f"Starting analysis of {len(repositories)} repositories...")
         logger.info("Repositories to analyze:")
