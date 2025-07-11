@@ -10,7 +10,12 @@ from collections import defaultdict, Counter
 import csv
 from typing import List, Dict, Any
 import argparse
+import logging
 
+logging.basicConfig(
+    format="%(levelname)-10s %(asctime)s %(filename)s %(lineno)d %(message)s",
+    level=logging.INFO,
+)
 
 class SlackDeploymentParser:
     def __init__(self):
@@ -183,7 +188,7 @@ class SlackDeploymentParser:
     ):
         """Save deployment data to CSV."""
         if not deployments:
-            print("No deployments to save")
+            logging.info("No deployments to save")
             return
 
         fieldnames = [
@@ -201,81 +206,74 @@ class SlackDeploymentParser:
             writer.writeheader()
             writer.writerows(deployments)
 
-        print(f"Deployment data saved to {filename}")
+        logging.info(f"Deployment data saved to {filename}")
 
     def print_analysis(self, analysis: Dict[str, Any]):
         """Print deployment analysis summary."""
-        print("\n" + "=" * 50)
-        print("DEPLOYMENT ANALYSIS SUMMARY")
-        print("=" * 50)
+        logging.info("\n" + "=" * 50)
+        logging.info("DEPLOYMENT ANALYSIS SUMMARY")
+        logging.info("=" * 50)
 
         if "error" in analysis:
-            print(f"Error: {analysis['error']}")
+            logging.info(f"Error: {analysis['error']}")
             return
 
-        print(f"Total Deployments: {analysis['total_deployments']}")
-        print(f"Unique Services: {analysis['unique_services']}")
-        print(f"Days with Deployments: {analysis['days_with_deployments']}")
-        print(f"Average Deployments/Day: {analysis['avg_deployments_per_day']}")
+        logging.info(f"Total Deployments: {analysis['total_deployments']}")
+        logging.info(f"Unique Services: {analysis['unique_services']}")
+        logging.info(f"Days with Deployments: {analysis['days_with_deployments']}")
+        logging.info(f"Average Deployments/Day: {analysis['avg_deployments_per_day']}")
 
         if analysis["most_deployed_service"]:
             service, count = analysis["most_deployed_service"]
-            print(f"Most Deployed Service: {service} ({count} times)")
+            logging.info(f"Most Deployed Service: {service} ({count} times)")
 
         if analysis["busiest_day"]:
             day, count = analysis["busiest_day"]
-            print(f"Busiest Day: {day} ({count} deployments)")
+            logging.info(f"Busiest Day: {day} ({count} deployments)")
 
-        print(f"\nDeployments by Service:")
+        logging.info(f"\nDeployments by Service:")
         for service, count in sorted(
             analysis["service_breakdown"].items(), key=lambda x: x[1], reverse=True
         ):
-            print(f"  {service}: {count}")
+            logging.info(f"  {service}: {count}")
 
-        print(f"\nDeployments by User:")
+        logging.info(f"\nDeployments by User:")
         for user, count in sorted(
             analysis["user_breakdown"].items(), key=lambda x: x[1], reverse=True
         ):
-            print(f"  {user}: {count}")
+            logging.info(f"  {user}: {count}")
 
 
 def main():
     parser = argparse.ArgumentParser(description="Parses txt file of Slack deploy messages, saves data")
-    parser.add_argument("filepath", type=str, help="path to Slack file")
+    parser.add_argument("-l", "--log", type=str, help="path to Slack log file")
+    parser.add_argument("-d", "--directory", type=str, help="directory to store CSV you'll create")
+
     args = parser.parse_args()
-    slack_file = args.filepath
+    slack_file = args.log
+    target_csv_dir = args.directory
 
     """Main function to parse Slack deployment messages."""
     parser = SlackDeploymentParser()
 
-    # Instructions for user
-    print("Slack Deployment Message Parser")
-    print("=" * 40)
-    print("1. Go to your #deploys Slack channel")
-    print("2. Scroll back ~4 weeks")
-    print("3. Copy all messages to a text file named 'slack_deploys.txt'")
-    print("4. Run this script")
-    print()
-
-    # Try to read the file
     try:
         with open(slack_file, "r", encoding="utf-8") as f:
             content = f.read()
     except FileNotFoundError:
-        print(f"Error: {slack_file} file not found.")
-        print("Please create this file with your copied Slack messages.")
+        logging.info(f"Error: {slack_file} file not found.")
+        logging.info("Please create this file with your copied Slack messages.")
         return
 
     # Parse the content
-    print("Parsing Slack messages...")
+    logging.info("Parsing Slack messages...")
     deployments = parser.parse_slack_export(content)
 
     if not deployments:
-        print("No deployments found. Check your message format or patterns.")
-        print("Sample expected formats:")
-        print("  - 'Deployed frontend v1.2.3 to production'")
-        print("  - '🚀 backend-api deployed to prod'")
-        print("  - 'Production deployment complete - mobile-app'")
+        logging.info("No deployments found. Check your message format or patterns.")
+        logging.info("Sample expected formats:")
+        logging.info("  - 'Deployed frontend v1.2.3 to production'")
+        logging.info("  - '🚀 backend-api deployed to prod'")
+        logging.info("  - 'Production deployment complete - mobile-app'")
         return
 
     # Analyze and display results
@@ -283,10 +281,11 @@ def main():
     parser.print_analysis(analysis)
 
     # Save to CSV
-    parser.save_to_csv(deployments)
+    csv_filepath = f"{target_csv_dir}/deployments_analysis.csv"
+    parser.save_to_csv(deployments, csv_filepath)
 
-    print(f"\nFound {len(deployments)} deployments!")
-    print("Data saved to 'deployment_analysis.csv'")
+    logging.info(f"\nFound {len(deployments)} deployments!")
+    logging.info(f"Saved in {csv_filepath}")
 
 
 if __name__ == "__main__":
