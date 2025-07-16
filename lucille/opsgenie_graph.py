@@ -124,7 +124,7 @@ def analyze_alerts_per_day(
 
     # Create the bar chart
     plt.figure(figsize=figsize)
-    sns.barplot(data=alerts_per_day, x='date_only', y='alert_count')
+    sns.barplot(data=alerts_per_day, x='date_only', y='alert_count', color='tomato')
     plt.title(title)
     plt.xlabel('Date')
     plt.ylabel('Number of Alerts')
@@ -165,7 +165,7 @@ def analyze_alerts_per_day(
     logging.info(f"Average alerts per week (simple): {avg_alerts_per_week:.2f}")
     logging.info(f"Average alerts per week (actual): {avg_alerts_per_week_actual:.2f}")
 
-    plt.show()
+    # plt.show()
 
     return {
         'total_alerts': total_alerts,

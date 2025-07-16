@@ -375,6 +375,7 @@ def create_sample_csv():
 
 
 def main():
+    # TODO read the CSV file as a command-line arg, not from the YAML file
     """Main function."""
     config_path = "/Users/michael@jaris.io/bin/jira_epic_config.yaml"
 

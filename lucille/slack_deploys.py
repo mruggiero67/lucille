@@ -5,7 +5,6 @@ Works with copy-pasted text from Slack channels.
 """
 
 import re
-from datetime import datetime
 from collections import defaultdict, Counter
 import csv
 from typing import List, Dict, Any
@@ -16,6 +15,7 @@ logging.basicConfig(
     format="%(levelname)-10s %(asctime)s %(filename)s %(lineno)d %(message)s",
     level=logging.INFO,
 )
+
 
 class SlackDeploymentParser:
     def __init__(self):
@@ -181,11 +181,9 @@ class SlackDeploymentParser:
             ),
         }
 
-    def save_to_csv(
-        self,
-        deployments: List[Dict[str, Any]],
-        filename: str = "deployment_analysis.csv",
-    ):
+    def save_to_csv(self,
+                    deployments: List[Dict[str, Any]],
+                    filename: str) -> None:
         """Save deployment data to CSV."""
         if not deployments:
             logging.info("No deployments to save")
@@ -269,7 +267,7 @@ def main():
     deployments = parser.parse_slack_export(content)
 
     if not deployments:
-        logging.info("No deployments found. Check your message format or patterns.")
+        logging.info("No deployments found. Check message format or patterns.")
         logging.info("Sample expected formats:")
         logging.info("  - 'Deployed frontend v1.2.3 to production'")
         logging.info("  - '🚀 backend-api deployed to prod'")
