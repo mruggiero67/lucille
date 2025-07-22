@@ -16,10 +16,16 @@ import argparse
 from typing import List, Dict, Any
 from pathlib import Path
 import json
+import logging
+
+logging.basicConfig(
+        format="%(levelname)-10s %(asctime)s %(filename)s %(lineno)d %(message)s",
+        level=logging.DEBUG,
+)
 
 
 class JiraEpicAnalyzer:
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any], epic_keys: List[str]):
         """
         Initialize the analyzer with Jira configuration.
 
@@ -34,22 +40,18 @@ class JiraEpicAnalyzer:
         auth_string = f"{self.username}:{self.api_token}"
         auth_bytes = auth_string.encode("ascii")
         auth_b64 = base64.b64encode(auth_bytes).decode("ascii")
-
-        self.headers = {
-            "Authorization": f"Basic {auth_b64}",
-            "Accept": "application/json",
+        self.headers = { "Authorization": f"Basic {auth_b64}", "Accept": "application/json",
             "Content-Type": "application/json",
         }
 
         # Status configuration
         self.done_statuses = set(
-            status.upper()
-            for status in config.get("done_statuses", ["Done", "Closed", "Resolved"])
+            status.upper() for status in config.get("done_statuses", ["Done", "Closed", "Resolved"])
         )
         self.output_directory = config["output_directory"]
 
         # Epic list
-        self.epic_keys = config["epics"]
+        self.epic_keys = epic_keys
 
     def test_connection(self) -> bool:
         """
@@ -601,11 +603,26 @@ def create_sample_config(config_path: str):
     )
 
 
+def read_epic_keys_from_file(file_path: str) -> List[str]:
+    epic_keys = []
+
+    with open(file_path, "r") as file:
+        reader = csv.DictReader(file)
+        for row in reader:
+            epic_key = row.get("epic_key", "").strip()
+            if epic_key:
+                epic_keys.append(epic_key)
+
+    return epic_keys
+
+
 def main():
     """
     Main function to run the epic analysis.
     """
-    parser = argparse.ArgumentParser(description="Analyze a set of epics and their % completion")
+    parser = argparse.ArgumentParser(
+        description="Analyze a set of epics and their % completion"
+    )
     parser.add_argument("config", type=str, help="path to config file")
     args = parser.parse_args()
     config_path = args.config
@@ -623,7 +640,10 @@ def main():
         sys.exit(1)
 
     # Initialize analyzer
-    analyzer = JiraEpicAnalyzer(config)
+    epics_file = config.get("epic_keys_file")
+    logging.info(f"Reading epic keys from file: {epics_file}")
+    epic_keys = read_epic_keys_from_file(epics_file)
+    analyzer = JiraEpicAnalyzer(config, epic_keys)
 
     # Test connection
     if not analyzer.test_connection():
