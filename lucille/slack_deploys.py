@@ -279,7 +279,7 @@ def main():
     parser.print_analysis(analysis)
 
     # Save to CSV
-    csv_filepath = f"{target_csv_dir}/deployments_analysis.csv"
+    csv_filepath = f"{target_csv_dir}/deployment_analysis.csv"
     parser.save_to_csv(deployments, csv_filepath)
 
     logging.info(f"\nFound {len(deployments)} deployments!")

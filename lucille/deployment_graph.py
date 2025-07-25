@@ -172,6 +172,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     config_file = args.config
     csv = args.csv_filepath
+    logging.info(f"Using csv file: {csv}")
 
     try:
         results = analyze_deployments_per_day(
