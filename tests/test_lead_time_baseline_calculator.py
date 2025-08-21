@@ -13,7 +13,7 @@ from pathlib import Path
 
 # Import the module under test
 from context import lucille
-from lucille.jira_lead_time_baseline_calculator import (
+from lucille.jira.lead_time_baseline_calculator import (
     JiraLeadTimeAnalyzer,
     load_config,
     create_sample_config,

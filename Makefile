@@ -10,10 +10,10 @@ opsgenie:
 	python lucille/opsgenie_graph.py -c ~/bin/graphs.yaml -f ~/Desktop/debris/$(DATE_PREFIX)_opsgenie.csv
 
 wip_epics:
-	python lucille/jira_filter_epics.py ~/bin/jira_epic_config.yaml
+	python lucille/jira/filter_epics.py ~/bin/jira_epic_config.yaml
 
 epic_completion: wip_epics
-	python lucille/jira_epic_completion.py ~/bin/jira_epic_config.yaml
+	python lucille/jira/epic_completion.py ~/bin/jira_epic_config.yaml
 
 prs:
 	python lucille/github_pr_analyzer.py ~/bin/github_config.yaml
