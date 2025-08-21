@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Unit tests for fetch_github_analytics.py
+Unit tests for fetch_analytics.py (GitHub analytics module)
 """
 
 import unittest
@@ -15,7 +15,7 @@ import requests
 
 # Import the classes we want to test
 from context import lucille
-from lucille.fetch_github_analytics import (
+from lucille.github.fetch_analytics import (
     GitHubMetricsExtractor,
     MultiRepoMetricsCollector,
     load_config,
