@@ -9,6 +9,7 @@ import requests
 import csv
 import yaml
 import base64
+import argparse
 from datetime import datetime
 import os
 import sys
@@ -375,9 +376,16 @@ def create_sample_csv():
 
 
 def main():
-    # TODO read the CSV file as a command-line arg, not from the YAML file
     """Main function."""
-    config_path = "/Users/michael@jaris.io/bin/jira_epic_config.yaml"
+    parser = argparse.ArgumentParser(description="Jira Epic Label Bulk Updater")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="jira_epic_config.yaml",
+        help="Path to the YAML configuration file.",
+    )
+    args = parser.parse_args()
+    config_path = args.config
 
     if not os.path.exists(config_path):
         print(f"Configuration file not found. Creating sample files...")

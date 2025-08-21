@@ -7,6 +7,7 @@ import requests
 import csv
 import yaml
 import base64
+import argparse
 from datetime import datetime, timedelta
 import statistics
 import os
@@ -566,7 +567,15 @@ def create_sample_config(config_path: str):
 
 def main():
     """Main function."""
-    config_path = "/Users/michael@jaris.io/bin/lead_time_config.yaml"
+    parser = argparse.ArgumentParser(description="Jira Lead Time Baseline Calculator")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="lead_time_config.yaml",
+        help="Path to the YAML configuration file.",
+    )
+    args = parser.parse_args()
+    config_path = args.config
 
     if not os.path.exists(config_path):
         logging.info(f"Configuration file not found. Creating sample...")

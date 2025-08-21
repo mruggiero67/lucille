@@ -8,6 +8,7 @@ import requests
 import csv
 import yaml
 import base64
+import argparse
 from datetime import datetime, timezone
 import os
 import sys
@@ -934,7 +935,16 @@ def create_sample_config(config_path: str):
 
 def main():
     """Main function."""
-    config_path = "/Users/michael@jaris.io/bin/kanban_scraper_config.yaml"
+    parser = argparse.ArgumentParser(description="Jira Kanban Board Scraper")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="kanban_scraper_config.yaml",
+        help="Path to the YAML configuration file.",
+    )
+    args = parser.parse_args()
+
+    config_path = args.config
 
     if not os.path.exists(config_path):
         print(f"Configuration file not found. Creating sample...")
