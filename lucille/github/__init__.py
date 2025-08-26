@@ -11,7 +11,7 @@ from .pr_analyzer import GitHubPRAnalyzer
 
 __all__ = [
     'GitHubMetricsExtractor',
-    'MultiRepoMetricsCollector', 
+    'MultiRepoMetricsCollector',
     'GitHubPRAnalyzer',
     'load_config',
 ]
