@@ -14,6 +14,8 @@ import sys
 from typing import List, Dict, Any
 from pathlib import Path
 import argparse
+from pandas import DataFrame
+import logging
 
 
 class GitHubPRAnalyzer:
@@ -353,6 +355,38 @@ class GitHubPRAnalyzer:
             )
 
 
+def filter_prs(df: DataFrame,
+               fieldnames: List[str],
+               min_age_days: int,
+               max_age_days: int) -> List[Dict[str, Any]]:
+    """
+    Create a subset DF of PRs based on age criteria.
+
+    Args:
+        df: DataFrame or list of dictionaries with PR data
+        fieldnames: List of fields to include in the output
+        min_age_days: Minimum age in days to include
+        max_age_days: Maximum age in days to include
+    """
+    return df[(df['age_days'] >= min_age_days) & (df['age_days'] <= max_age_days)][fieldnames]
+
+
+def mk_subset_file(filtered_df: DataFrame, csv_path: str):
+    """
+    Create a CSV file from the filtered DataFrame.
+
+    Args:
+        filtered_df: Filtered DataFrame with PR data
+        csv_path: Path to save the CSV file
+    """
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"pr_subset_{timestamp}.csv"
+    csv_path = Path(csv_path) / filename
+
+    filtered_df.to_csv(csv_path, index=False)
+    logging.info(f"Subset CSV file created at '{csv_path}' with {len(filtered_df)} PRs.")
+
+
 def load_config(config_path: str) -> Dict[str, Any]:
     """
     Load configuration from YAML file.
@@ -455,26 +489,31 @@ def main(config_path):
     output_directory = config["csv_directory"]
     custom_filename = config.get("output_filename")  # Optional
 
-    if github_token == "your_github_personal_access_token_here":
-        print("Error: Please update the github_token in the configuration file.")
-        print("Create a personal access token at: https://github.com/settings/tokens")
-        sys.exit(1)
-
     # Initialize analyzer
     analyzer = GitHubPRAnalyzer(github_token)
 
     # Analyze PRs across all repositories
-    print(f"Analyzing PRs across {len(repositories)} repositories...")
+    logging.info(f"Analyzing PRs across {len(repositories)} repositories...")
     prs = analyzer.analyze_all_repositories(repositories)
 
     # Save results
     output_file = analyzer.save_to_csv(prs, output_directory, custom_filename)
 
+    # save subset of PRs aged between 7 and 21 days
+    columns = config.get("subset_columns", [
+        "repo_name",
+        "author",
+        "created_at",
+        "age_days",
+        "pr_url"
+    ])
+    min_days = config.get("subset_min_days", 7)
+    max_days = config.get("subset_max_days", 21)
+    subset = filter_prs(DataFrame(prs), columns, min_days, max_days)
+    mk_subset_file(subset, output_directory)
+
     # Print summary
     analyzer.print_summary(prs)
-
-    print(f"\nCSV file '{output_file}' is ready to upload to Google Sheets!")
-    print("Consider sharing this with the team to discuss PR review processes.")
 
 
 if __name__ == "__main__":
