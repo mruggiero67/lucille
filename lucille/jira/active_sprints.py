@@ -2,8 +2,8 @@
 """
 Jira Sprint Data Extractor
 
-This script extracts stories and epics from active Jira sprints and exports them to CSV files.
-Configuration is driven by a YAML file containing Jira credentials and output directory.
+extracts stories and epics from active Jira sprints and exports them to CSV files.
+Configuration driven by YAML file containing Jira credentials et al
 """
 
 import csv
@@ -11,10 +11,11 @@ import logging
 import os
 import sys
 from datetime import datetime
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional
 import requests
 import yaml
 from requests.auth import HTTPBasicAuth
+import argparse
 
 
 def setup_logging(log_level: str = "INFO") -> None:
@@ -217,13 +218,12 @@ def write_csv(data: List[Dict], filepath: str, fieldnames: List[str]) -> None:
     logging.info(f"Written {len(data)} rows to {filepath}")
 
 
-def main():
+def main(config_path: str) -> None:
     """Main execution function."""
     # Set up logging
     setup_logging(log_level="DEBUG")
 
     # Load configuration
-    config_path = "/Users/michael@jaris.io/bin/jira_epic_config.yaml"  # You can make this a command line argument if needed
     config = load_config(config_path)
 
     # Initialize Jira client
@@ -249,7 +249,6 @@ def main():
 
     for sprint in active_sprints:
         if not sprint.get("board_id") in board_ids:
-            logging.debug(f"sprint board ID {sprint.get('board_id')} not in {board_ids}, skipping")
             logging.warning(f"Sprint {sprint.get('name')} doesn't match desired boards, skipping")
             continue
         sprint_id = sprint["id"]
@@ -334,4 +333,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(
+        description="Scrape current active sprints and extract stories, epics"
+    )
+    parser.add_argument("config", type=str, help="path to config file")
+    args = parser.parse_args()
+    config_path = args.config
+    main(config_path)

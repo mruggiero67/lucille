@@ -17,3 +17,6 @@ epic_completion: wip_epics
 
 prs:
 	python lucille/github/pr_analyzer.py ~/bin/github_config.yaml
+
+active_sprints:
+	python lucille/jira/active_sprints.py ~/bin/jira_epic_config.yaml
