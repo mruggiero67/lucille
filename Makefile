@@ -12,7 +12,7 @@ opsgenie:
 wip_epics:
 	python lucille/jira/filter_epics.py ~/bin/jira_epic_config.yaml
 
-epic_completion: wip_epics
+epic_completion: active_sprints
 	python lucille/jira/epic_completion.py ~/bin/jira_epic_config.yaml
 
 prs:
@@ -20,3 +20,14 @@ prs:
 
 active_sprints:
 	python lucille/jira/active_sprints.py ~/bin/jira_epic_config.yaml
+
+.PHONY: list
+
+list:
+	@echo "Available targets:"
+	@$(MAKE) -pRrq -f $(firstword $(MAKEFILE_LIST)) : 2>/dev/null | \
+		awk -v RS= -F: '/(^|\n)# Files(\n|$$)/,/(^|\n)# Finished Make data base/ { \
+		if ($$1 !~ "^[#.]") { \
+		print $$1 \
+		} \
+		}' | grep -E -v -e '^[^[:alnum:]]' -e '^$$@$$' | sort
