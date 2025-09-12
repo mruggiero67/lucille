@@ -158,22 +158,64 @@ class JiraDeployAnalyzer:
         return round(business_hours)
 
     def search_issues(self) -> List[Dict]:
-        """Search for issues in target projects updated within the time window."""
+        """Search for issues updated within the time window."""
         jql = f"project in ({','.join(self.PROJECTS)}) AND updated >= \"{self.start_date}\" ORDER BY updated DESC"
 
         self.logger.info(f"Executing JQL: {jql}")
-
-        params = {
-            "jql": jql,
-            "fields": "key,summary,status,created,updated,project",
-            "maxResults": self.MAX_RESULTS,
-        }
-
-        result = self._make_jira_request("search", params)
-        issues = result.get("issues", [])
+        fields = ['key', 'summary', 'status', 'created', 'updated', 'project']
+        issues = self._fetch_all_issues(jql, fields, self.MAX_RESULTS)
 
         self.logger.info(f"Found {len(issues)} issues to analyze")
         return issues
+
+    def _fetch_all_issues(self, jql: str, fields: List[str], max_results: int = None) -> List[Dict]:
+        """Fetch all issues matching JQL query, handling pagination."""
+        if max_results is None:
+            max_results = self.MAX_RESULTS
+
+        all_issues = []
+        start_at = 0
+        page_size = min(100, max_results)  # Jira API limit is 100 per request
+
+        self.logger.info(f"Fetching issues with pagination (max: {max_results})")
+
+        while len(all_issues) < max_results:
+            params = {
+                'jql': jql,
+                'fields': ','.join(fields),
+                'startAt': start_at,
+                'maxResults': page_size
+            }
+
+            self.logger.debug(f"Fetching page: startAt={start_at}, maxResults={page_size}")
+            result = self._make_jira_request('search', params)
+            issues = result.get('issues', [])
+
+            if not issues:
+                self.logger.debug("No more issues found, stopping pagination")
+                break
+
+            all_issues.extend(issues)
+
+            # Check if we've reached the end
+            total = result.get('total', 0)
+            if start_at + len(issues) >= total:
+                self.logger.debug(f"Reached end of results (total: {total})")
+                break
+
+            # Prepare for next page
+            start_at += len(issues)
+            remaining = max_results - len(all_issues)
+            page_size = min(100, remaining)
+
+            self.logger.debug(f"Fetched {len(all_issues)} issues, continuing...")
+
+        # Trim to max_results if we got more than requested
+        if len(all_issues) > max_results:
+            all_issues = all_issues[:max_results]
+
+        self.logger.info(f"Fetched {len(all_issues)} total issues")
+        return all_issues
 
     def get_issue_changelog(self, issue_key: str) -> Dict:
         """Get detailed issue information including changelog."""
@@ -223,6 +265,7 @@ class JiraDeployAnalyzer:
             duration_hours = self.calculate_duration_hours(
                 deploy_start_time, deploy_end_time
             )
+            # we don't use business hours for now.
             # business_hours = self.calculate_business_hours(
             #    deploy_start_time, deploy_end_time
             # )
@@ -397,10 +440,10 @@ class JiraDeployAnalyzer:
                 detailed_data.append(record)
 
         if not detailed_data:
-            self.logger.warning("No issues with Deploy status transitions found")
+            self.logger.warning(f"No issues with {self.TARGET_STATUS}")
             return
 
-        self.logger.info(f"Processed {len(detailed_data)} issues with Deploy status")
+        self.logger.info(f"Processed {len(detailed_data)} {self.TARGET_STATUS}")
 
         # Calculate statistics
         durations = [record["duration_hours"] for record in detailed_data]
@@ -436,7 +479,7 @@ def setup_logging(verbose: bool = False) -> None:
     """Setup logging configuration."""
     log_level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        format="%(levelname)-10s %(asctime)s %(filename)s %(lineno)d %(message)s",
         level=log_level
     )
 
