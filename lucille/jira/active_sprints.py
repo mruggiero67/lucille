@@ -229,6 +229,7 @@ def main(config_path: str) -> None:
     # Initialize Jira client
     jira_config = config["jira"]
     board_ids = config["board_ids"]
+    epic_keys_file = config.get("epic_keys_file")
     jira_client = JiraClient(
         board_ids=board_ids,
         base_url=jira_config["base_url"],
@@ -327,9 +328,35 @@ def main(config_path: str) -> None:
     write_csv(all_stories, stories_filepath, story_fieldnames)
     write_csv(all_epics, epics_filepath, epic_fieldnames)
 
+    # and save the epics to a separate CSV file, used by the completion script
+    save_epic_keys_to_csv(all_epics, epic_keys_file)
+
     logging.info("Data extraction completed successfully")
     logging.info(f"Stories CSV: {stories_filepath}")
     logging.info(f"Epics CSV: {epics_filepath}")
+
+
+def save_epic_keys_to_csv(epics: List[Dict], epic_keys_file: str) -> None:
+    """Save epic keys to CSV file."""
+    try:
+        # Sort keys for consistent output
+        keys = [epic["epic_key"] for epic in epics if "epic_key" in epic]
+        sorted_keys = sorted(set(keys))
+
+        with open(epic_keys_file, "w", newline="") as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(["epic_key"])  # Header
+
+            for key in sorted_keys:
+                writer.writerow([key])
+
+        logging.info(
+            f"Saved {len(sorted_keys)} unique epic keys to {epic_keys_file}"
+        )
+
+    except IOError as e:
+        logging.error(f"Failed to write to output file {epic_keys_file}: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
