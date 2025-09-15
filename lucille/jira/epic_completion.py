@@ -152,7 +152,7 @@ class JiraEpicAnalyzer:
                 # JQL to find all issues that are children of the epic
                 jql = f'"Epic Link" = {epic_key} OR parent = {epic_key}'
 
-                url = f"{self.base_url}/rest/api/3/search"
+                url = f"{self.base_url}/rest/api/3/search/jql"
                 params = {
                     "jql": jql,
                     "fields": "summary,status,issuetype,assignee,created,updated,priority,resolution,resolutiondate",

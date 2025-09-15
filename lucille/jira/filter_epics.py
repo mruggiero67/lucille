@@ -98,7 +98,7 @@ def get_filter_issues(
     session: requests.Session, base_url: str, filter_id: int, max_results: int = 1000
 ) -> List[dict]:
     """Retrieve all issues from a Jira filter."""
-    url = f"{base_url.rstrip('/')}/rest/api/2/search"
+    url = f"{base_url.rstrip('/')}/rest/api/3/search/jql"
     all_issues = []
     start_at = 0
 

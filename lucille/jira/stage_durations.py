@@ -188,7 +188,7 @@ class JiraDeployAnalyzer:
             }
 
             self.logger.debug(f"Fetching page: startAt={start_at}, maxResults={page_size}")
-            result = self._make_jira_request('search', params)
+            result = self._make_jira_request('search/jql', params)
             issues = result.get('issues', [])
 
             if not issues:

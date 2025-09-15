@@ -56,7 +56,7 @@ class JiraAnalyzer:
         max_results = 50  # Jira's typical page size
 
         while True:
-            url = f"{self.jira_url}/rest/api/3/search"
+            url = f"{self.jira_url}/rest/api/3/search/jql"
             params = {
                 "jql": jql,
                 "startAt": start_at,
@@ -381,7 +381,7 @@ def main():
     jira_config = config["jira"]
     project_config = config["project"]
     output_config = config.get("output", {})
-    
+
     jira_url = jira_config["base_url"]
     username = jira_config["username"]
     api_token = jira_config["api_token"]
@@ -406,7 +406,7 @@ def main():
         print("Generating CSV files...")
         detailed_filename = output_config.get("detailed_csv", "jira_work_distribution_detailed.csv")
         summary_filename = output_config.get("summary_csv", "jira_work_distribution_summary.csv")
-        
+
         analyzer.generate_detailed_csv(processed_stories, detailed_filename)
         analyzer.generate_summary_csv(processed_stories, summary_filename)
 

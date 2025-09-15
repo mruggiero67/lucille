@@ -179,19 +179,19 @@ class JiraKanbanScraper:
         try:
             # Use JQL to find all issues with this epic as parent
             jql = f'"Epic Link" = {epic_key} OR parent = {epic_key}'
-            url = f"{self.base_url}/rest/api/3/search"
+            url = f"{self.base_url}/rest/api/3/search/jql"
             params = {
                 "jql": jql,
                 "fields": "key,summary,status,issuetype",
                 "maxResults": 1000,
             }
-            
+
             response = requests.get(url, headers=self.headers, params=params, timeout=30)
             response.raise_for_status()
-            
+
             data = response.json()
             return data.get("issues", [])
-            
+
         except requests.exceptions.RequestException as e:
             print(f"Warning: Could not fetch children for epic {epic_key}: {e}")
             return []
@@ -201,7 +201,7 @@ class JiraKanbanScraper:
         for category, statuses in self.status_categories.items():
             if status_name in statuses:
                 return category
-        
+
         # Default categorization based on common patterns
         status_lower = status_name.lower()
         if any(word in status_lower for word in ["done", "closed", "resolved", "complete"]):
@@ -811,7 +811,7 @@ class JiraKanbanScraper:
             print(f"\nInitiative Summary:")
             print(f"Total Initiatives: {rollup_data['total_initiatives']}")
             print(f"Labeled Epics: {len(rollup_data['labeled_epics'])}")
-            
+
             print(f"\n{'Initiative':<30} {'Epics':<8} {'Complete %':<12} {'Teams':<20}")
             print("-" * 70)
             for initiative, data in sorted(rollup_data["initiatives"].items()):

@@ -88,7 +88,7 @@ class JiraLeadTimeAnalyzer:
 
             while True:
                 try:
-                    url = f"{self.base_url}/rest/api/3/search"
+                    url = f"{self.base_url}/rest/api/3/search/jql"
                     params = {
                         "jql": jql,
                         "fields": "summary,status,issuetype,created,updated,resolutiondate,assignee,priority,customfield_10016",  # customfield_10016 is often story points
