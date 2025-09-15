@@ -23,6 +23,9 @@ class JiraDeployAnalyzer:
         """Initialize the analyzer with configuration from YAML file."""
         self.logger = logging.getLogger(__name__)
         self.config = self._load_config(config_path)
+
+
+        self.logger.debug(f"Configuration: {self.config}")
         self.session = self._setup_session()
 
         # Configuration constants
@@ -75,6 +78,7 @@ class JiraDeployAnalyzer:
     def _make_jira_request(self, endpoint: str, params: Optional[Dict] = None) -> Dict:
         """Make authenticated request to Jira API."""
         url = f"{self.config['base_url'].rstrip('/')}/rest/api/3/{endpoint}"
+        self.logger.info(f"the URL is {url}")
 
         try:
             response = self.session.get(url, params=params)
@@ -174,7 +178,7 @@ class JiraDeployAnalyzer:
             max_results = self.MAX_RESULTS
 
         all_issues = []
-        start_at = 0
+        next_page_token = None
         page_size = min(100, max_results)  # Jira API limit is 100 per request
 
         self.logger.info(f"Fetching issues with pagination (max: {max_results})")
@@ -182,13 +186,30 @@ class JiraDeployAnalyzer:
         while len(all_issues) < max_results:
             params = {
                 'jql': jql,
-                'fields': ','.join(fields),
-                'startAt': start_at,
-                'maxResults': page_size
+                'fields': fields,  # Array of strings, not comma-separated
+                'maxResults': page_size,
+                'expand': '',  # Optional: add if you need additional data like changelog
+                'fieldsByKeys': False  # Optional: use field keys instead of field names
             }
 
-            self.logger.debug(f"Fetching page: startAt={start_at}, maxResults={page_size}")
-            result = self._make_jira_request('search/jql', params)
+            # Add nextPageToken if we have one (not on first request)
+            if next_page_token:
+                params['nextPageToken'] = next_page_token
+
+            self.logger.debug(f"Fetching page with maxResults={page_size}, nextPageToken={next_page_token}")
+
+            try:
+                result = self._make_jira_request('search/jql', params)
+            except requests.exceptions.RequestException as e:
+                self.logger.error(f"Failed to fetch issues page with token={next_page_token}: {e}")
+                if next_page_token is None:
+                    # If first page fails, re-raise the exception
+                    raise
+                else:
+                    # If subsequent page fails, return what we have so far
+                    self.logger.warning(f"Returning {len(all_issues)} issues due to pagination error")
+                    break
+
             issues = result.get('issues', [])
 
             if not issues:
@@ -197,24 +218,31 @@ class JiraDeployAnalyzer:
 
             all_issues.extend(issues)
 
-            # Check if we've reached the end
+            # Check pagination info from API response
             total = result.get('total', 0)
-            if start_at + len(issues) >= total:
-                self.logger.debug(f"Reached end of results (total: {total})")
+            next_page_token = result.get('nextPageToken')
+
+            self.logger.debug(f"API Response: total={total}, received={len(issues)}, nextPageToken={next_page_token}")
+
+            # If no nextPageToken, we've reached the end
+            if not next_page_token:
+                self.logger.debug(f"No more pages available (total fetched: {len(all_issues)})")
                 break
 
-            # Prepare for next page
-            start_at += len(issues)
+            # Adjust page size for remaining items
             remaining = max_results - len(all_issues)
             page_size = min(100, remaining)
 
-            self.logger.debug(f"Fetched {len(all_issues)} issues, continuing...")
+            self.logger.debug(f"Fetched {len(all_issues)} issues so far, continuing...")
+
+            # Optional: Add a small delay to be respectful to the API
+            # time.sleep(0.1)
 
         # Trim to max_results if we got more than requested
         if len(all_issues) > max_results:
             all_issues = all_issues[:max_results]
 
-        self.logger.info(f"Fetched {len(all_issues)} total issues")
+        self.logger.info(f"Successfully fetched {len(all_issues)} total issues")
         return all_issues
 
     def get_issue_changelog(self, issue_key: str) -> Dict:
