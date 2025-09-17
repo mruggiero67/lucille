@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Dict, List, Any
 import sys
 from collections import defaultdict
+from utils import fetch_all_issues
 
 
 class JiraAnalyzer:
@@ -32,7 +33,8 @@ class JiraAnalyzer:
         self.session = requests.Session()
         self.session.auth = self.auth
 
-    def fetch_completed_stories(self, project_key: str = "SSJ") -> List[Dict[str, Any]]:
+    def fetch_completed_stories(self,
+                                project_key: str = "SSJ") -> List[Dict[str, Any]]:
         """
         Fetch all completed stories from the specified project since Jan 1, 2025.
 
@@ -51,42 +53,23 @@ class JiraAnalyzer:
         ORDER BY resolved DESC
         """
 
-        stories = []
-        start_at = 0
-        max_results = 50  # Jira's typical page size
+        fields = ["key", "summary", "assignee", "reporter", "status", "created", "updated", "resolved", "priority", "components", "fixVersions", "customfield_10016"]
 
-        while True:
-            url = f"{self.jira_url}/rest/api/3/search/jql"
-            params = {
-                "jql": jql,
-                "startAt": start_at,
-                "maxResults": max_results,
-                "fields": "key,summary,assignee,reporter,status,created,updated,resolved,priority,components,fixVersions,customfield_10016",  # customfield_10016 is typically story points
-            }
+        try:
+            stories = fetch_all_issues(
+                session=self.session,
+                base_url=self.jira_url,
+                jql=jql,
+                fields=fields,
+                max_results=None  # No limit for completed stories
+            )
 
-            try:
-                response = self.session.get(url, params=params)
-                response.raise_for_status()
-                data = response.json()
+            print(f"Fetched {len(stories)} completed stories from project {project_key}")
+            return stories
 
-                issues = data.get("issues", [])
-                if not issues:
-                    break
-
-                stories.extend(issues)
-
-                # Check if we've fetched all results
-                if len(issues) < max_results:
-                    break
-
-                start_at += max_results
-
-            except requests.exceptions.RequestException as e:
-                print(f"Error fetching data from Jira: {e}")
-                sys.exit(1)
-
-        print(f"Fetched {len(stories)} completed stories from project {project_key}")
-        return stories
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching data from Jira: {e}")
+            sys.exit(1)
 
     def extract_story_data(self, story: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -386,7 +369,8 @@ def main():
     username = jira_config["username"]
     api_token = jira_config["api_token"]
     project_key = project_config["key"]
-    analysis_start_date = project_config.get("analysis_start_date", "2025-01-01")
+    analysis_start_date = project_config.get("analysis_start_date",
+                                             "2025-01-01")
 
     # Initialize analyzer
     analyzer = JiraAnalyzer(jira_url, username, api_token)
@@ -404,8 +388,10 @@ def main():
 
         # Generate CSV files
         print("Generating CSV files...")
-        detailed_filename = output_config.get("detailed_csv", "jira_work_distribution_detailed.csv")
-        summary_filename = output_config.get("summary_csv", "jira_work_distribution_summary.csv")
+        detailed_filename = output_config.get("detailed_csv",
+                                              "jira_work_distribution_detailed.csv")
+        summary_filename = output_config.get("summary_csv",
+                                             "jira_work_distribution_summary.csv")
 
         analyzer.generate_detailed_csv(processed_stories, detailed_filename)
         analyzer.generate_summary_csv(processed_stories, summary_filename)

@@ -9,13 +9,12 @@ import csv
 import yaml
 import base64
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime
 import os
 import sys
-from typing import List, Dict, Any, Optional, Set
+from typing import List, Dict, Any, Optional
 from pathlib import Path
-import json
-import time
+from utils import fetch_all_issues
 
 
 class JiraKanbanScraper:
@@ -177,20 +176,24 @@ class JiraKanbanScraper:
     def get_epic_children(self, epic_key: str) -> List[Dict[str, Any]]:
         """Get all children issues for an epic."""
         try:
+            # Create a session for the API calls
+            session = requests.Session()
+            session.headers.update(self.headers)
+
             # Use JQL to find all issues with this epic as parent
             jql = f'"Epic Link" = {epic_key} OR parent = {epic_key}'
-            url = f"{self.base_url}/rest/api/3/search/jql"
-            params = {
-                "jql": jql,
-                "fields": "key,summary,status,issuetype",
-                "maxResults": 1000,
-            }
+            fields = ["key", "summary", "status", "issuetype"]
 
-            response = requests.get(url, headers=self.headers, params=params, timeout=30)
-            response.raise_for_status()
+            # Use the shared utils function for pagination
+            issues = fetch_all_issues(
+                session=session,
+                base_url=self.base_url,
+                jql=jql,
+                fields=fields,
+                max_results=1000
+            )
 
-            data = response.json()
-            return data.get("issues", [])
+            return issues
 
         except requests.exceptions.RequestException as e:
             print(f"Warning: Could not fetch children for epic {epic_key}: {e}")
@@ -947,7 +950,7 @@ def main():
     config_path = args.config
 
     if not os.path.exists(config_path):
-        print(f"Configuration file not found. Creating sample...")
+        print("Configuration file not found. Creating sample...")
         create_sample_config(config_path)
         return
 
@@ -964,7 +967,6 @@ def main():
         sys.exit(1)
 
     # Scrape all boards
-    print(f"\nStarting board scraping...")
     issues = scraper.scrape_all_boards()
 
     # Create initiative rollups
@@ -978,7 +980,7 @@ def main():
     # Print summary
     scraper.print_summary(issues, rollup_data)
 
-    print(f"\nFiles generated:")
+    print("\nFiles generated:")
     print(f"  All Issues: {output_file}")
     print(f"  Initiative Rollups: {initiative_file}")
     print(f"  Epic Details: {epic_details_file}")

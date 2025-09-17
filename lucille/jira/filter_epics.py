@@ -13,12 +13,11 @@ import argparse
 import csv
 import logging
 import sys
-from pathlib import Path
 from typing import List, Set
-
 import requests
 import yaml
-from requests.auth import HTTPBasicAuth
+
+from utils import fetch_all_issues, create_jira_session
 
 
 def setup_logging(level: str = "INFO") -> None:
@@ -69,71 +68,31 @@ def validate_config(config: dict) -> None:
     logging.info("Configuration validation passed")
 
 
-def create_jira_session(
-    base_url: str, username: str, api_token: str
-) -> requests.Session:
-    """Create and configure a requests session for Jira API calls."""
-    session = requests.Session()
-    session.auth = HTTPBasicAuth(username, api_token)
-    session.headers.update(
-        {"Accept": "application/json", "Content-Type": "application/json"}
-    )
-
-    # Test the connection
-    test_url = f"{base_url.rstrip('/')}/rest/api/2/myself"
-    try:
-        response = session.get(test_url)
-        response.raise_for_status()
-        user_info = response.json()
-        logging.info(
-            f"Successfully authenticated as: {user_info.get('displayName', username)}"
-        )
-        return session
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Failed to authenticate with Jira: {e}")
-        sys.exit(1)
+# create_jira_session is now imported from utils
 
 
 def get_filter_issues(
     session: requests.Session, base_url: str, filter_id: int, max_results: int = 1000
 ) -> List[dict]:
     """Retrieve all issues from a Jira filter."""
-    url = f"{base_url.rstrip('/')}/rest/api/3/search/jql"
-    all_issues = []
-    start_at = 0
+    jql = f"filter = {filter_id}"
+    fields = ["key", "summary", "issuetype", "status"]
 
-    while True:
-        params = {
-            "jql": f"filter = {filter_id}",
-            "fields": "key,summary,issuetype,status",
-            "maxResults": max_results,
-            "startAt": start_at,
-        }
+    try:
+        issues = fetch_all_issues(
+            session=session,
+            base_url=base_url,
+            jql=jql,
+            fields=fields,
+            max_results=max_results
+        )
 
-        try:
-            response = session.get(url, params=params)
-            response.raise_for_status()
-            data = response.json()
+        logging.info(f"Filter {filter_id}: Total issues retrieved: {len(issues)}")
+        return issues
 
-            issues = data.get("issues", [])
-            all_issues.extend(issues)
-
-            logging.info(
-                f"Filter {filter_id}: Retrieved {len(issues)} issues "
-                f"(total so far: {len(all_issues)})"
-            )
-
-            if len(issues) < max_results:
-                break
-
-            start_at += max_results
-
-        except requests.exceptions.RequestException as e:
-            logging.error(f"Failed to retrieve issues from filter {filter_id}: {e}")
-            return []
-
-    logging.info(f"Filter {filter_id}: Total issues retrieved: {len(all_issues)}")
-    return all_issues
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Failed to retrieve issues from filter {filter_id}: {e}")
+        return []
 
 
 def extract_epic_keys(issues: List[dict]) -> Set[str]:

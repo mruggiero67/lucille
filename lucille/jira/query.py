@@ -1,13 +1,13 @@
 import requests
 from requests.auth import HTTPBasicAuth
 import argparse
-import json
 import logging
 from pathlib import Path, PosixPath
 import datetime
 from re import sub
 import pandas as pd
 import yaml
+from utils import fetch_all_issues
 
 
 logging.basicConfig(
@@ -25,35 +25,37 @@ def get_all_issues(
     next_page_token=None,
     collected_issues=None,
 ):
-    if collected_issues is None:
-        collected_issues = []
+    """
+    Legacy function for backward compatibility.
+    Now uses the shared utils function internally.
+    """
+    # Create a session for the API calls
+    session = requests.Session()
+    session.auth = auth
+    session.headers.update({"Accept": "application/json"})
 
-    query = {"jql": jql, "maxResults": max_results, "fields": fields}
+    # Extract base_url from the full URL
+    base_url = url.replace("/rest/api/3/search/jql", "")
 
-    # Include nextPageToken if provided
-    if next_page_token:
-        query["nextPageToken"] = next_page_token
+    # Convert fields string to list if needed
+    if isinstance(fields, str):
+        fields = [fields]
 
-    headers = {"Accept": "application/json"}
-
-    response = requests.get(url, headers=headers, params=query, auth=auth)
-    if response.status_code != 200:
-        raise Exception(
-            f"Failed to fetch issues: {response.status_code}, {response.text}"
+    try:
+        # Use the shared utils function for pagination
+        issues = fetch_all_issues(
+            session=session,
+            base_url=base_url,
+            jql=jql,
+            fields=fields,
+            max_results=max_results
         )
 
-    data = response.json()
-    issues = data.get("issues", [])
-    collected_issues.extend(issues)
+        return issues
 
-    logging.debug(f"max_results: {max_results}, next_page_token: {next_page_token}")
-    next_page_token = data.get("nextPageToken")
-    if next_page_token:
-        return get_all_issues(
-            url, auth, jql, fields, max_results, next_page_token, collected_issues
-        )
-    else:
-        return collected_issues
+    except Exception as e:
+        logging.error(f"Error fetching issues: {e}")
+        return []
 
 
 def flatten_issue(issue):

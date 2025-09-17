@@ -12,10 +12,9 @@ import sys
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
-
 import requests
 import yaml
-from requests.auth import HTTPBasicAuth
+from utils import fetch_all_issues, create_jira_session
 
 
 class JiraDeployAnalyzer:
@@ -23,7 +22,6 @@ class JiraDeployAnalyzer:
         """Initialize the analyzer with configuration from YAML file."""
         self.logger = logging.getLogger(__name__)
         self.config = self._load_config(config_path)
-
 
         self.logger.debug(f"Configuration: {self.config}")
         self.session = self._setup_session()
@@ -33,6 +31,7 @@ class JiraDeployAnalyzer:
         self.WEEKS_BACK = self.config.get("weeks_back", 8)
         self.TARGET_STATUS = self.config.get("target_status", "Deploy")
         self.MAX_RESULTS = self.config.get("max_results", 1000)
+        self.jira_url = self.config["base_url"]
 
         # Calculate start date
         self.start_date = (datetime.now() - timedelta(weeks=self.WEEKS_BACK)).strftime(
@@ -52,7 +51,7 @@ class JiraDeployAnalyzer:
             required_fields = ["jira", "stage_durations"]
             for field in required_fields:
                 if field not in config:
-                    raise ValueError(f"Missing required field '{field}' in config file")
+                    raise ValueError(f"Missing field '{field}' in config file")
             jira_config = config["jira"]
             global_config = config["stage_durations"]
             return jira_config | global_config
@@ -68,17 +67,17 @@ class JiraDeployAnalyzer:
 
     def _setup_session(self) -> requests.Session:
         """Setup requests session with authentication."""
-        session = requests.Session()
-        session.auth = HTTPBasicAuth(self.config["username"], self.config["api_token"])
-        session.headers.update(
-            {"Accept": "application/json", "Content-Type": "application/json"}
+        return create_jira_session(
+            self.config["base_url"],
+            self.config["username"],
+            self.config["api_token"]
         )
-        return session
 
-    def _make_jira_request(self, endpoint: str, params: Optional[Dict] = None) -> Dict:
+    def _make_jira_request(self,
+                           endpoint: str,
+                           params: Optional[Dict] = None) -> Dict:
         """Make authenticated request to Jira API."""
         url = f"{self.config['base_url'].rstrip('/')}/rest/api/3/{endpoint}"
-        self.logger.info(f"the URL is {url}")
 
         try:
             response = self.session.get(url, params=params)
@@ -89,7 +88,8 @@ class JiraDeployAnalyzer:
             raise
 
     def _parse_jira_timestamp(self, timestamp: str) -> datetime:
-        """Parse Jira timestamp handling various formats and return timezone-aware datetime."""
+        """Parse Jira timestamp handling various formats
+        and return timezone-aware datetime."""
         from datetime import timezone
 
         try:
@@ -167,83 +167,14 @@ class JiraDeployAnalyzer:
 
         self.logger.info(f"Executing JQL: {jql}")
         fields = ['key', 'summary', 'status', 'created', 'updated', 'project']
-        issues = self._fetch_all_issues(jql, fields, self.MAX_RESULTS)
+        issues = fetch_all_issues(session=self.session,
+                                  base_url=self.jira_url,
+                                  jql=jql,
+                                  fields=fields,
+                                  max_results=self.MAX_RESULTS)
 
         self.logger.info(f"Found {len(issues)} issues to analyze")
         return issues
-
-    def _fetch_all_issues(self, jql: str, fields: List[str], max_results: int = None) -> List[Dict]:
-        """Fetch all issues matching JQL query, handling pagination."""
-        if max_results is None:
-            max_results = self.MAX_RESULTS
-
-        all_issues = []
-        next_page_token = None
-        page_size = min(100, max_results)  # Jira API limit is 100 per request
-
-        self.logger.info(f"Fetching issues with pagination (max: {max_results})")
-
-        while len(all_issues) < max_results:
-            params = {
-                'jql': jql,
-                'fields': fields,  # Array of strings, not comma-separated
-                'maxResults': page_size,
-                'expand': '',  # Optional: add if you need additional data like changelog
-                'fieldsByKeys': False  # Optional: use field keys instead of field names
-            }
-
-            # Add nextPageToken if we have one (not on first request)
-            if next_page_token:
-                params['nextPageToken'] = next_page_token
-
-            self.logger.debug(f"Fetching page with maxResults={page_size}, nextPageToken={next_page_token}")
-
-            try:
-                result = self._make_jira_request('search/jql', params)
-            except requests.exceptions.RequestException as e:
-                self.logger.error(f"Failed to fetch issues page with token={next_page_token}: {e}")
-                if next_page_token is None:
-                    # If first page fails, re-raise the exception
-                    raise
-                else:
-                    # If subsequent page fails, return what we have so far
-                    self.logger.warning(f"Returning {len(all_issues)} issues due to pagination error")
-                    break
-
-            issues = result.get('issues', [])
-
-            if not issues:
-                self.logger.debug("No more issues found, stopping pagination")
-                break
-
-            all_issues.extend(issues)
-
-            # Check pagination info from API response
-            total = result.get('total', 0)
-            next_page_token = result.get('nextPageToken')
-
-            self.logger.debug(f"API Response: total={total}, received={len(issues)}, nextPageToken={next_page_token}")
-
-            # If no nextPageToken, we've reached the end
-            if not next_page_token:
-                self.logger.debug(f"No more pages available (total fetched: {len(all_issues)})")
-                break
-
-            # Adjust page size for remaining items
-            remaining = max_results - len(all_issues)
-            page_size = min(100, remaining)
-
-            self.logger.debug(f"Fetched {len(all_issues)} issues so far, continuing...")
-
-            # Optional: Add a small delay to be respectful to the API
-            # time.sleep(0.1)
-
-        # Trim to max_results if we got more than requested
-        if len(all_issues) > max_results:
-            all_issues = all_issues[:max_results]
-
-        self.logger.info(f"Successfully fetched {len(all_issues)} total issues")
-        return all_issues
 
     def get_issue_changelog(self, issue_key: str) -> Dict:
         """Get detailed issue information including changelog."""
@@ -463,6 +394,7 @@ class JiraDeployAnalyzer:
         # Process each issue
         detailed_data = []
         for issue in issues:
+            self.logger.info(f"Analyzing issue {issue['key']}")
             record = self.process_issue(issue)
             if record:
                 detailed_data.append(record)

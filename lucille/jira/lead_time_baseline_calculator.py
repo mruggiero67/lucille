@@ -16,6 +16,7 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 import logging
 from pprint import pformat
+from utils import fetch_all_issues
 
 
 logging.basicConfig(
@@ -82,47 +83,40 @@ class JiraLeadTimeAnalyzer:
 
             logging.info(f"  JQL: {jql}")
 
-            epic_stories = []
-            start_at = 0
-            max_results = 100
+            # Create a session for the API calls
+            session = requests.Session()
+            session.headers.update(self.headers)
 
-            while True:
-                try:
-                    url = f"{self.base_url}/rest/api/3/search/jql"
-                    params = {
-                        "jql": jql,
-                        "fields": "summary,status,issuetype,created,updated,resolutiondate,assignee,priority,customfield_10016",  # customfield_10016 is often story points
-                        "expand": "changelog",
-                        "startAt": start_at,
-                        "maxResults": max_results,
-                    }
+            fields = ["summary",
+                      "status",
+                      "issuetype",
+                      "created",
+                      "updated",
+                      "resolutiondate",
+                      "assignee",
+                      "priority",
+                      "customfield_10016"]
 
-                    response = requests.get(
-                        url, headers=self.headers, params=params, timeout=30
-                    )
-                    response.raise_for_status()
+            try:
+                # Use the shared utils function for pagination
+                issues = fetch_all_issues(
+                    session=session,
+                    base_url=self.base_url,
+                    jql=jql,
+                    fields=fields,
+                    expand="changelog",
+                    max_results=None  # No limit for epic stories
+                )
 
-                    data = response.json()
-                    issues = data.get("issues", [])
+                # Add epic information to each story
+                for issue in issues:
+                    issue["epic_key"] = epic_key
 
-                    if not issues:
-                        break
+                epic_stories = issues
 
-                    # Add epic information to each story
-                    for issue in issues:
-                        # logging.info(pformat(issue))
-                        issue["epic_key"] = epic_key
-
-                    epic_stories.extend(issues)
-
-                    if len(issues) < max_results:
-                        break
-
-                    start_at += max_results
-
-                except requests.exceptions.RequestException as e:
-                    logging.info(f"  Error fetching stories for epic {epic_key}: {e}")
-                    break
+            except requests.exceptions.RequestException as e:
+                logging.info(f"  Error fetching stories for epic {epic_key}: {e}")
+                epic_stories = []
 
             logging.info(f"  Found {len(epic_stories)} completed stories in epic {epic_key}")
             all_stories.extend(epic_stories)
@@ -177,7 +171,6 @@ class JiraLeadTimeAnalyzer:
 
         return {**story_info, **timestamps, **lead_times, "timeline": timeline}
 
-
     def _parse_datetime(self, date_string: str) -> Optional[datetime]:
         """Parse Jira datetime string handling various formats."""
         if not date_string:
@@ -219,7 +212,8 @@ class JiraLeadTimeAnalyzer:
             logging.info(f"Warning: Could not parse datetime '{date_string}': {e}")
             return None
 
-    def _extract_status_timeline(self, changelog: List[Dict]) -> List[Dict[str, Any]]:
+    def _extract_status_timeline(self,
+                                 changelog: List[Dict]) -> List[Dict[str, Any]]:
         """Extract status changes from changelog."""
         timeline = []
 
@@ -242,7 +236,8 @@ class JiraLeadTimeAnalyzer:
         timeline.sort(key=lambda x: x["date"] if x["date"] else datetime.min)
         return timeline
 
-    def _find_first_dev_start(self, timeline: List[Dict]) -> Optional[datetime]:
+    def _find_first_dev_start(self,
+                              timeline: List[Dict]) -> Optional[datetime]:
         """Find when story first entered development status."""
         for event in timeline:
             if event["to_status"] and event["to_status"].upper() in self.dev_statuses:

@@ -17,6 +17,7 @@ from typing import List, Dict, Any
 from pathlib import Path
 import json
 import logging
+from utils import fetch_all_issues
 
 logging.basicConfig(
         format="%(levelname)-10s %(asctime)s %(filename)s %(lineno)d %(message)s",
@@ -143,89 +144,68 @@ class JiraEpicAnalyzer:
         Returns:
             List of child issue dictionaries
         """
-        children = []
-        start_at = 0
-        max_results = 100
+        # Create a session for the API calls
+        session = requests.Session()
+        session.headers.update(self.headers)
 
-        while True:
-            try:
-                # JQL to find all issues that are children of the epic
-                jql = f'"Epic Link" = {epic_key} OR parent = {epic_key}'
+        # JQL to find all issues that are children of the epic
+        jql = f'"Epic Link" = {epic_key} OR parent = {epic_key}'
+        fields = ["summary", "status", "issuetype", "assignee", "created", "updated", "priority", "resolution", "resolutiondate"]
 
-                url = f"{self.base_url}/rest/api/3/search/jql"
-                params = {
-                    "jql": jql,
-                    "fields": "summary,status,issuetype,assignee,created,updated,priority,resolution,resolutiondate",
-                    "startAt": start_at,
-                    "maxResults": max_results,
+        try:
+            # Use the shared utils function for pagination
+            issues = fetch_all_issues(
+                session=session,
+                base_url=self.base_url,
+                jql=jql,
+                fields=fields,
+                max_results=None  # No limit for epic children
+            )
+
+            children = []
+            for issue in issues:
+                fields = issue["fields"]
+
+                child_info = {
+                    "key": issue["key"],
+                    "summary": fields.get("summary", ""),
+                    "status": fields.get("status", {}).get("name", "Unknown"),
+                    "issue_type": fields.get("issuetype", {}).get("name", "Unknown"),
+                    "assignee": (
+                        fields.get("assignee", {}).get("displayName", "Unassigned")
+                        if fields.get("assignee")
+                        else "Unassigned"
+                    ),
+                    "created": (
+                        fields.get("created", "")[:10] if fields.get("created") else ""
+                    ),
+                    "updated": (
+                        fields.get("updated", "")[:10] if fields.get("updated") else ""
+                    ),
+                    "priority": (
+                        fields.get("priority", {}).get("name", "Unknown")
+                        if fields.get("priority")
+                        else "Unknown"
+                    ),
+                    "resolution": (
+                        fields.get("resolution", {}).get("name", "")
+                        if fields.get("resolution")
+                        else ""
+                    ),
+                    "resolution_date": (
+                        fields.get("resolutiondate", "")[:10]
+                        if fields.get("resolutiondate")
+                        else ""
+                    ),
                 }
 
-                response = requests.get(
-                    url, headers=self.headers, params=params, timeout=10
-                )
-                response.raise_for_status()
+                children.append(child_info)
 
-                data = response.json()
-                issues = data.get("issues", [])
+            return children
 
-                if not issues:
-                    break
-
-                for issue in issues:
-                    fields = issue["fields"]
-
-                    child_info = {
-                        "key": issue["key"],
-                        "summary": fields.get("summary", ""),
-                        "status": fields.get("status", {}).get("name", "Unknown"),
-                        "issue_type": fields.get("issuetype", {}).get(
-                            "name", "Unknown"
-                        ),
-                        "assignee": (
-                            fields.get("assignee", {}).get("displayName", "Unassigned")
-                            if fields.get("assignee")
-                            else "Unassigned"
-                        ),
-                        "created": (
-                            fields.get("created", "")[:10]
-                            if fields.get("created")
-                            else ""
-                        ),
-                        "updated": (
-                            fields.get("updated", "")[:10]
-                            if fields.get("updated")
-                            else ""
-                        ),
-                        "priority": (
-                            fields.get("priority", {}).get("name", "Unknown")
-                            if fields.get("priority")
-                            else "Unknown"
-                        ),
-                        "resolution": (
-                            fields.get("resolution", {}).get("name", "")
-                            if fields.get("resolution")
-                            else ""
-                        ),
-                        "resolution_date": (
-                            fields.get("resolutiondate", "")[:10]
-                            if fields.get("resolutiondate")
-                            else ""
-                        ),
-                    }
-
-                    children.append(child_info)
-
-                # Check if we need to fetch more
-                if len(issues) < max_results:
-                    break
-
-                start_at += max_results
-
-            except requests.exceptions.RequestException as e:
-                print(f"Error fetching children for epic {epic_key}: {e}")
-                break
-
-        return children
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching children for epic {epic_key}: {e}")
+            return []
 
     def analyze_epic_completion(self, epic_key: str) -> Dict[str, Any]:
         """
