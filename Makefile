@@ -21,6 +21,9 @@ prs:
 active_sprints:
 	python lucille/jira/active_sprints.py ~/bin/jira_epic_config.yaml
 
+slack_deploy_log:
+	python lucille/reformat_slack_scrape.py ~/Desktop/debris/raw_slack_deploy_log.txt >> ~/Desktop/debris/slack_deploy_log.txt
+
 .PHONY: list
 
 list:
