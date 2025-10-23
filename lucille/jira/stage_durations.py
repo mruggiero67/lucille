@@ -14,7 +14,14 @@ from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 import requests
 import yaml
-from utils import fetch_all_issues, create_jira_session
+
+# Handle both direct script execution and module import
+try:
+    from .utils import fetch_all_issues, create_jira_session
+except ImportError:
+    # Add parent directory to path for direct script execution
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+    from lucille.jira.utils import fetch_all_issues, create_jira_session
 
 
 class JiraDeployAnalyzer:
