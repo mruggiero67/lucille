@@ -10,6 +10,7 @@ import csv
 from typing import List, Dict, Any
 import argparse
 import logging
+from datetime import datetime
 
 logging.basicConfig(
     format="%(levelname)-10s %(asctime)s %(filename)s %(lineno)d %(message)s",
@@ -69,13 +70,14 @@ class SlackDeploymentParser:
 
     def _parse_deployment_line(self, line: str) -> Dict[str, Any]:
         """
-        Parse a single deployment line with format:
-        "2025-05-20 deployed jakub 6:40 AM BankingInsights 1.55.0 released"
+        Parse a single deployment line with multiple format support:
+        Format 1: "2025-05-20 deployed jakub 6:40 AM BankingInsights 1.55.0 released"
+        Format 2: "2025-05-20 jakub 6:40 AM BankingInsights 1.55.0 released"
+        Format 3: "2025-10-24 GitHub (2:00 AM): GitHub APP 2:00 AM New release..."
         """
-        # Pattern to match the specific format
-        pattern = r"^(\d{4}-\d{2}-\d{2})\s+deployed\s+(\w+)\s+(\d{1,2}:\d{2})\s+(AM|PM)\s+(\S+)\s+([\d.]+)\s+released"
-
-        match = re.match(pattern, line)
+        # Pattern 1: Match the specific format with "deployed" keyword
+        pattern1 = r"^(\d{4}-\d{2}-\d{2})\s+deployed\s+(\w+)\s+(\d{1,2}:\d{2})\s+(AM|PM)\s+(\S+)\s+([\d.]+)\s+released"
+        match = re.match(pattern1, line)
         if match:
             date = match.group(1)
             user = match.group(2)
@@ -83,10 +85,90 @@ class SlackDeploymentParser:
             meridiem = match.group(4)
             service = match.group(5)
             version = match.group(6)
-
-            # Create full timestamp
             full_time = f"{time} {meridiem}"
             timestamp = f"{date} {full_time}"
+            return {
+                "date": date,
+                "time": full_time,
+                "user": user,
+                "service": service,
+                "version": version,
+                "raw_message": line.strip(),
+                "timestamp": timestamp,
+            }
+
+        # Pattern 2: Match standard format "2025-05-20 username time message"
+        pattern2 = r"^(\d{4}-\d{2}-\d{2})\s+(\w+)\s+(\d{1,2}:\d{2})\s+(AM|PM)\s+(.+)"
+        match = re.match(pattern2, line)
+        if match:
+            date = match.group(1)
+            user = match.group(2)
+            time = match.group(3)
+            meridiem = match.group(4)
+            rest_of_line = match.group(5)
+
+            full_time = f"{time} {meridiem}"
+            timestamp = f"{date} {full_time}"
+
+            # Check for GitHub URL first
+            github_url_match = re.search(r"github\.com/jarisdev/([A-Za-z0-9_-]+)", rest_of_line)
+            if github_url_match:
+                service = github_url_match.group(1)
+                version_match = re.search(r"Release\s+-\s+([\d.]+)", rest_of_line)
+                version = version_match.group(1) if version_match else "unknown"
+            else:
+                # Extract service and version from the rest of the line
+                # Look for pattern like "ServiceName X.Y.Z"
+                service_version_match = re.search(r"([A-Za-z][A-Za-z0-9_-]*)\s+(v?[\d.]+)", rest_of_line)
+                if service_version_match:
+                    service = service_version_match.group(1)
+                    version = service_version_match.group(2)
+                else:
+                    # Try to find just a service name
+                    service_match = re.search(r"([A-Z][A-Za-z][A-Za-z0-9_-]*)", rest_of_line)
+                    service = service_match.group(1) if service_match else "unknown"
+                    version = "unknown"
+
+            return {
+                "date": date,
+                "time": full_time,
+                "user": user,
+                "service": service,
+                "version": version,
+                "raw_message": line.strip(),
+                "timestamp": timestamp,
+            }
+
+        # Pattern 3: Match format with parenthetical time "2025-10-24 Username (2:00 AM): rest"
+        pattern3 = r"^(\d{4}-\d{2}-\d{2})\s+(\w+)\s+\((\d{1,2}:\d{2})\s+(AM|PM)\):\s+(.+)"
+        match = re.match(pattern3, line)
+        if match:
+            date = match.group(1)
+            user = match.group(2)
+            time = match.group(3)
+            meridiem = match.group(4)
+            rest_of_line = match.group(5)
+
+            full_time = f"{time} {meridiem}"
+            timestamp = f"{date} {full_time}"
+
+            # Special handling for GitHub releases - extract service from URL
+            github_url_match = re.search(r"github\.com/jarisdev/([A-Za-z0-9_-]+)", rest_of_line)
+            if github_url_match:
+                service = github_url_match.group(1)
+                # Extract version from "Release - X.Y.Z" pattern
+                version_match = re.search(r"Release\s+-\s+([\d.]+)", rest_of_line)
+                version = version_match.group(1) if version_match else "unknown"
+            else:
+                # Extract service and version from the rest
+                service_version_match = re.search(r"([A-Za-z][A-Za-z0-9_-]*)\s+(v?[\d.]+)", rest_of_line)
+                if service_version_match:
+                    service = service_version_match.group(1)
+                    version = service_version_match.group(2)
+                else:
+                    service_match = re.search(r"([A-Z][A-Za-z][A-Za-z0-9_-]*)", rest_of_line)
+                    service = service_match.group(1) if service_match else "unknown"
+                    version = "unknown"
 
             return {
                 "date": date,
@@ -107,18 +189,6 @@ class SlackDeploymentParser:
             date_match = re.search(r"(\d{4}-\d{2}-\d{2})", line)
             date = date_match.group(1) if date_match else "unknown"
 
-            # Try to extract service name (word before version number)
-            service_match = re.search(r"(\w+)\s+[\d.]+", line)
-            service = service_match.group(1) if service_match else "unknown"
-
-            # Try to extract version
-            version_match = re.search(r"([\d.]+)", line)
-            version = version_match.group(1) if version_match else "unknown"
-
-            # Try to extract user (word after "deployed")
-            user_match = re.search(r"deployed\s+(\w+)", line)
-            user = user_match.group(1) if user_match else "unknown"
-
             # Try to extract time
             time_match = re.search(r"(\d{1,2}:\d{2})\s*(AM|PM)", line)
             time = (
@@ -126,6 +196,18 @@ class SlackDeploymentParser:
                 if time_match
                 else "unknown"
             )
+
+            # Try to extract username - look for word at the beginning after date
+            user_match = re.search(r"^\d{4}-\d{2}-\d{2}\s+(\w+)", line)
+            user = user_match.group(1) if user_match else "unknown"
+
+            # Try to extract service name - look for capitalized word before version
+            service_match = re.search(r"([A-Z][A-Za-z][A-Za-z0-9_-]*)\s+(?:v?[\d.]+)", line)
+            service = service_match.group(1) if service_match else "unknown"
+
+            # Try to extract version
+            version_match = re.search(r"([\d.]+)", line)
+            version = version_match.group(1) if version_match else "unknown"
 
             return {
                 "date": date,
@@ -278,8 +360,9 @@ def main():
     analysis = parser.analyze_deployments(deployments)
     parser.print_analysis(analysis)
 
-    # Save to CSV
-    csv_filepath = f"{target_csv_dir}/deployment_analysis.csv"
+    # Save to CSV with date-stamped filename (using underscores)
+    today = datetime.now().strftime("%Y_%m_%d")
+    csv_filepath = f"{target_csv_dir}/{today}_deployment_analysis.csv"
     parser.save_to_csv(deployments, csv_filepath)
 
     logging.info(f"\nFound {len(deployments)} deployments!")
