@@ -19,8 +19,7 @@ import yaml
 
 # Configure logging at module level
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -36,7 +35,7 @@ def load_config(config_path: Path) -> Dict:
         Dictionary containing configuration parameters
     """
     if config_path.exists():
-        with open(config_path, 'r') as f:
+        with open(config_path, "r") as f:
             return yaml.safe_load(f)
     return {}
 
@@ -54,12 +53,12 @@ def calculate_total_tokens(row: pd.Series) -> int:
         Total token count (input + output tokens)
     """
     input_tokens = (
-        row.get('usage_input_tokens_no_cache', 0) +
-        row.get('usage_input_tokens_cache_write_5m', 0) +
-        row.get('usage_input_tokens_cache_write_1h', 0) +
-        row.get('usage_input_tokens_cache_read', 0)
+        row.get("usage_input_tokens_no_cache", 0)
+        + row.get("usage_input_tokens_cache_write_5m", 0)
+        + row.get("usage_input_tokens_cache_write_1h", 0)
+        + row.get("usage_input_tokens_cache_read", 0)
     )
-    output_tokens = row.get('usage_output_tokens', 0)
+    output_tokens = row.get("usage_output_tokens", 0)
     return input_tokens + output_tokens
 
 
@@ -82,11 +81,11 @@ def load_and_process_data(csv_path: Path) -> pd.DataFrame:
     logger.info(f"Loaded {len(df)} rows of data")
 
     # Calculate total tokens for each row
-    df['total_tokens'] = df.apply(calculate_total_tokens, axis=1)
+    df["total_tokens"] = df.apply(calculate_total_tokens, axis=1)
 
     # Group by date and sum tokens
-    daily_totals = df.groupby('usage_date_utc')['total_tokens'].sum().reset_index()
-    daily_totals = daily_totals.sort_values('usage_date_utc')
+    daily_totals = df.groupby("usage_date_utc")["total_tokens"].sum().reset_index()
+    daily_totals = daily_totals.sort_values("usage_date_utc")
 
     logger.info(f"Processed data for {len(daily_totals)} unique days")
     return daily_totals
@@ -108,38 +107,45 @@ def create_graph(daily_totals: pd.DataFrame, output_path: Path) -> None:
     fig, ax = plt.subplots(figsize=(14, 8))
 
     # Create bar chart
-    dates = daily_totals['usage_date_utc']
-    tokens = daily_totals['total_tokens']
+    dates = daily_totals["usage_date_utc"]
+    tokens = daily_totals["total_tokens"]
 
-    bars = ax.bar(range(len(dates)), tokens, color='steelblue', alpha=0.8)
+    bars = ax.bar(range(len(dates)), tokens, color="steelblue", alpha=0.8)
 
     # Customize the plot
-    ax.set_xlabel('Date', fontsize=12, fontweight='bold')
-    ax.set_ylabel('Total Tokens', fontsize=12, fontweight='bold')
-    ax.set_title('Claude Code Token Usage by Day', fontsize=14, fontweight='bold', pad=20)
+    ax.set_xlabel("Date", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Total Tokens", fontsize=12, fontweight="bold")
+    ax.set_title(
+        "Claude Code Token Usage by Day", fontsize=14, fontweight="bold", pad=20
+    )
 
     # Set x-axis labels
     ax.set_xticks(range(len(dates)))
-    ax.set_xticklabels(dates, rotation=45, ha='right')
+    ax.set_xticklabels(dates, rotation=45, ha="right")
 
     # Add grid for readability
-    ax.grid(axis='y', alpha=0.3, linestyle='--')
+    ax.grid(axis="y", alpha=0.3, linestyle="--")
 
     # Format y-axis to show numbers in millions
-    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x/1e6:.1f}M'))
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"{x/1e6:.1f}M"))
 
     # Add value labels on top of bars
     for i, (bar, value) in enumerate(zip(bars, tokens)):
         height = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width()/2., height,
-                f'{value/1e6:.2f}M',
-                ha='center', va='bottom', fontsize=8)
+        ax.text(
+            bar.get_x() + bar.get_width() / 2.0,
+            height,
+            f"{value/1e6:.2f}M",
+            ha="center",
+            va="bottom",
+            fontsize=8,
+        )
 
     # Adjust layout to prevent label cutoff
     plt.tight_layout()
 
     # Save as PNG
-    plt.savefig(output_path, format='png', dpi=150)
+    plt.savefig(output_path, format="png", dpi=150)
     logger.info(f"Graph saved successfully to {output_path}")
 
     # Close the figure to free memory
@@ -148,44 +154,74 @@ def create_graph(daily_totals: pd.DataFrame, output_path: Path) -> None:
 
 def create_summary_file(daily_totals: pd.DataFrame, output_path: Path) -> None:
     """
-    Create a text summary file with daily token usage values.
+    Create a CSV summary file with daily token usage values and statistics.
 
     Side-effecting function that writes to file system.
 
     Args:
         daily_totals: DataFrame with usage_date_utc and total_tokens columns
-        output_path: Path where the summary text file should be saved
+        output_path: Path where the summary CSV file should be saved
     """
     logger.info(f"Creating summary file at {output_path}")
 
-    with open(output_path, 'w') as f:
-        f.write("Claude Code Token Usage Summary\n")
-        f.write("=" * 60 + "\n\n")
+    # Create a copy of daily totals with formatted columns
+    summary_df = daily_totals.copy()
+    summary_df["tokens_millions"] = summary_df["total_tokens"] / 1e6
 
-        # Write daily breakdown
-        f.write("Daily Token Usage:\n")
-        f.write("-" * 60 + "\n")
-        for _, row in daily_totals.iterrows():
-            date = row['usage_date_utc']
-            tokens = row['total_tokens']
-            f.write(f"{date}: {tokens:,} tokens ({tokens/1e6:.2f}M)\n")
+    # Calculate summary statistics
+    total = daily_totals["total_tokens"].sum()
+    mean = daily_totals["total_tokens"].mean()
+    median = daily_totals["total_tokens"].median()
+    max_val = daily_totals["total_tokens"].max()
+    min_val = daily_totals["total_tokens"].min()
 
-        # Write summary statistics
-        f.write("\n" + "=" * 60 + "\n")
-        f.write("Summary Statistics:\n")
-        f.write("-" * 60 + "\n")
-        total = daily_totals['total_tokens'].sum()
-        mean = daily_totals['total_tokens'].mean()
-        median = daily_totals['total_tokens'].median()
-        max_val = daily_totals['total_tokens'].max()
-        min_val = daily_totals['total_tokens'].min()
+    # Add summary statistics as rows at the end
+    summary_rows = pd.DataFrame(
+        [
+            {"usage_date_utc": "", "total_tokens": "", "tokens_millions": ""},
+            {
+                "usage_date_utc": "SUMMARY STATISTICS",
+                "total_tokens": "",
+                "tokens_millions": "",
+            },
+            {
+                "usage_date_utc": "Total tokens (all days)",
+                "total_tokens": total,
+                "tokens_millions": total / 1e6,
+            },
+            {
+                "usage_date_utc": "Average tokens per day",
+                "total_tokens": mean,
+                "tokens_millions": mean / 1e6,
+            },
+            {
+                "usage_date_utc": "Median tokens per day",
+                "total_tokens": median,
+                "tokens_millions": median / 1e6,
+            },
+            {
+                "usage_date_utc": "Maximum tokens (single day)",
+                "total_tokens": max_val,
+                "tokens_millions": max_val / 1e6,
+            },
+            {
+                "usage_date_utc": "Minimum tokens (single day)",
+                "total_tokens": min_val,
+                "tokens_millions": min_val / 1e6,
+            },
+            {
+                "usage_date_utc": "Number of days",
+                "total_tokens": len(daily_totals),
+                "tokens_millions": "",
+            },
+        ]
+    )
 
-        f.write(f"Total tokens (all days): {total:,} ({total/1e6:.2f}M)\n")
-        f.write(f"Average tokens per day: {mean:,.0f} ({mean/1e6:.2f}M)\n")
-        f.write(f"Median tokens per day: {median:,.0f} ({median/1e6:.2f}M)\n")
-        f.write(f"Maximum tokens (single day): {max_val:,} ({max_val/1e6:.2f}M)\n")
-        f.write(f"Minimum tokens (single day): {min_val:,} ({min_val/1e6:.2f}M)\n")
-        f.write(f"Number of days: {len(daily_totals)}\n")
+    # Concatenate daily data with summary statistics
+    final_df = pd.concat([summary_df, summary_rows], ignore_index=True)
+
+    # Save to CSV
+    final_df.to_csv(output_path, index=False)
 
     logger.info(f"Summary file created successfully at {output_path}")
 
@@ -196,29 +232,25 @@ def main():
     """
     # Set up argument parser
     parser = argparse.ArgumentParser(
-        description='Analyze Claude Code token usage and generate visualizations'
+        description="Analyze Claude Code token usage and generate visualizations"
     )
     parser.add_argument(
-        '--csv',
+        "--csv",
         type=Path,
-        default=Path.home() / 'Desktop' / 'debris' / '2025_10_23_claude_token_use.csv',
-        help='Path to the CSV file containing token usage data (default: ~/Desktop/debris/2025_10_23_claude_token_use.csv)'
+        default=Path.home() / "Desktop" / "debris" / "2025_10_23_claude_token_use.csv",
+        help="Path to the CSV file containing token usage data (default: ~/Desktop/debris/2025_10_23_claude_token_use.csv)",
     )
     parser.add_argument(
-        '--output-dir',
+        "--output-dir",
         type=Path,
-        default=Path.home() / 'Desktop' / 'debris',
-        help='Directory where output files will be saved (default: ~/Desktop/debris)'
+        default=Path.home() / "Desktop" / "debris",
+        help="Directory where output files will be saved (default: ~/Desktop/debris)",
     )
     parser.add_argument(
-        '--config',
-        type=Path,
-        help='Path to YAML configuration file (optional)'
+        "--config", type=Path, help="Path to YAML configuration file (optional)"
     )
     parser.add_argument(
-        '--verbose',
-        action='store_true',
-        help='Enable verbose logging output'
+        "--verbose", action="store_true", help="Enable verbose logging output"
     )
 
     args = parser.parse_args()
@@ -246,8 +278,8 @@ def main():
     daily_totals = load_and_process_data(args.csv)
 
     # Generate outputs
-    graph_path = args.output_dir / 'claude_token_usage_by_day.png'
-    summary_path = args.output_dir / 'claude_token_usage_summary.txt'
+    graph_path = args.output_dir / "claude_token_usage_by_day.png"
+    summary_path = args.output_dir / "claude_token_usage_summary.csv"
 
     create_graph(daily_totals, graph_path)
     create_summary_file(daily_totals, summary_path)
@@ -259,5 +291,5 @@ def main():
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     exit(main())
