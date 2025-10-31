@@ -75,11 +75,24 @@ def analyze_deployments_per_day(
 
     # Create the bar chart
     plt.figure(figsize=figsize)
-    sns.barplot(data=deployments_per_day, x="date_only", y="deployment_count")
+    ax = sns.barplot(data=deployments_per_day, x="date_only", y="deployment_count")
     plt.title(title)
     plt.xlabel("Date")
     plt.ylabel("Number of Deployments")
-    plt.xticks(rotation=45)
+
+    # Improve x-axis readability - show fewer labels
+    total_dates = len(deployments_per_day)
+    if total_dates > 30:
+        # Show every Nth label to avoid crowding
+        step = max(1, total_dates // 20)  # Show about 20 labels max
+        for i, label in enumerate(ax.get_xticklabels()):
+            # Always show first and last labels
+            if i == 0 or i == total_dates - 1:
+                label.set_visible(True)
+            elif i % step != 0:
+                label.set_visible(False)
+
+    plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
 
     # Save the chart as PNG
@@ -94,6 +107,14 @@ def analyze_deployments_per_day(
 
     plt.savefig(filepath, dpi=300, bbox_inches="tight")
     logging.info(f"Chart saved to: {filepath}")
+
+    # Save daily breakdown to CSV
+    csv_filename = f"{safe_title}_{timestamp}.csv"
+    csv_filepath = os.path.join(output_dir, csv_filename)
+    deployments_per_day_export = deployments_per_day.copy()
+    deployments_per_day_export['date_only'] = deployments_per_day_export['date_only'].dt.strftime('%Y-%m-%d')
+    deployments_per_day_export.to_csv(csv_filepath, index=False)
+    logging.info(f"Daily breakdown CSV saved to: {csv_filepath}")
 
     # Calculate statistics
     total_deployments = deployments_per_day["deployment_count"].sum()
