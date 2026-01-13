@@ -128,7 +128,7 @@ class GitHubMetricsExtractor:
                     date_string = date_string[:-1] + "+00:00"
                 return datetime.fromisoformat(date_string)
             except Exception as e:
-                print(f"Warning: Could not parse date '{date_string}': {e}")
+                logger.error(f"Warning: Could not parse date '{date_string}': {e}")
                 return datetime.now()  # Fallback to now
 
     def get_pull_requests(self, since_date: datetime, state: str = "all") -> List[Dict]:
@@ -162,7 +162,7 @@ class GitHubMetricsExtractor:
                     ) == len(filtered_prs):
                         break
             except Exception as e:
-                print(f"Warning: Skipping PR due to date parsing error: {e}")
+                logger.error(f"Warning: Skipping PR due to date parsing error: {e}")
                 continue
 
         return filtered_prs
@@ -194,7 +194,8 @@ class GitHubMetricsExtractor:
                 if created_at >= since_date:
                     filtered_deployments.append(deployment)
             except Exception as e:
-                print(f"Warning: Skipping deployment due to date parsing error: {e}")
+                logger.error(f"Warning: Skipping deployment due to date parsing error: {e}")
+                logger.error(f"Deployment data: {deployment}")
                 continue
 
         return filtered_deployments
@@ -223,7 +224,7 @@ class GitHubMetricsExtractor:
                 if created_at >= since_date:
                     filtered_releases.append(release)
             except Exception as e:
-                print(f"Warning: Skipping release due to date parsing error: {e}")
+                logger.error(f"Warning: Skipping release due to date parsing error: {e}")
                 continue
 
         return filtered_releases
@@ -245,13 +246,13 @@ class GitHubMetricsExtractor:
         }
 
         # Collect commits
-        metrics["commits"] = self.get_commits(since_date)
+        # metrics["commits"] = self.get_commits(since_date)
 
         # Collect pull requests
-        metrics["pull_requests"] = self.get_pull_requests(since_date)
+        # metrics["pull_requests"] = self.get_pull_requests(since_date)
 
         # Collect workflow runs (GitHub Actions)
-        metrics["workflow_runs"] = self.get_workflow_runs(since_date)
+        # metrics["workflow_runs"] = self.get_workflow_runs(since_date)
 
         # Collect deployments
         metrics["deployments"] = self.get_deployments(since_date)
@@ -262,7 +263,7 @@ class GitHubMetricsExtractor:
             deployment["statuses"] = self.get_deployment_statuses(deployment["id"])
 
         # Collect releases
-        metrics["releases"] = self.get_releases(since_date)
+        # metrics["releases"] = self.get_releases(since_date)
 
         return metrics
 
@@ -321,7 +322,7 @@ class GitHubMetricsExtractor:
                             ]
                         )
                     except Exception as e:
-                        print(f"Warning: Skipping commit due to error: {e}")
+                        logger.error(f"Warning: Skipping commit due to error: {e}")
             csv_files["commits"] = commits_file
 
         # Export pull requests
@@ -369,7 +370,7 @@ class GitHubMetricsExtractor:
                             ]
                         )
                     except Exception as e:
-                        print(f"Warning: Skipping PR due to error: {e}")
+                        logger.error(f"Warning: Skipping PR due to error: {e}")
             csv_files["pull_requests"] = prs_file
 
         # Export workflow runs
@@ -423,7 +424,7 @@ class GitHubMetricsExtractor:
                             ]
                         )
                     except Exception as e:
-                        print(f"Warning: Skipping workflow run due to error: {e}")
+                        logger.error(f"Warning: Skipping workflow run due to error: {e}")
             csv_files["workflow_runs"] = workflows_file
 
         # Export deployments
@@ -477,7 +478,7 @@ class GitHubMetricsExtractor:
                             ]
                         )
                     except Exception as e:
-                        print(f"Warning: Skipping deployment due to error: {e}")
+                        logger.error(f"Warning: Skipping deployment due to error: {e}")
             csv_files["deployments"] = deployments_file
 
         # Export releases
@@ -525,7 +526,7 @@ class GitHubMetricsExtractor:
                             ]
                         )
                     except Exception as e:
-                        print(f"Warning: Skipping release due to error: {e}")
+                        logger.error(f"Warning: Skipping release due to error: {e}")
             csv_files["releases"] = releases_file
 
         print(f"CSV files exported to {output_dir}/")
@@ -643,7 +644,7 @@ class MultiRepoMetricsCollector:
                             ]
                         )
                     except Exception as e:
-                        print(f"Warning: Skipping commit in summary: {e}")
+                        logger.error(f"Warning: Skipping commit in summary: {e}")
         summary_files["commits"] = commits_file
 
         # Combined deployments across all repos
@@ -697,7 +698,7 @@ class MultiRepoMetricsCollector:
                             ]
                         )
                     except Exception as e:
-                        print(f"Warning: Skipping deployment in summary: {e}")
+                        logger.error(f"Warning: Skipping deployment in summary: {e}")
         summary_files["deployments"] = deployments_file
 
         # Combined releases across all repos
@@ -748,7 +749,7 @@ class MultiRepoMetricsCollector:
                             ]
                         )
                     except Exception as e:
-                        print(f"Warning: Skipping release in summary: {e}")
+                        logger.error(f"Warning: Skipping release in summary: {e}")
         summary_files["releases"] = releases_file
 
         # Repository summary statistics

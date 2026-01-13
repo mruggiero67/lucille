@@ -67,7 +67,8 @@ class JiraClient:
             raise
 
     def get_active_sprints(self) -> List[Dict]:
-        """Get all active sprints across all boards."""
+        """Get all active sprints across all boards;
+        note this doesn't select non-scrum boards."""
         logging.info("Fetching active sprints...")
         active_sprints = []
 
@@ -93,9 +94,8 @@ class JiraClient:
                     sprint["board_name"] = board_name
                     sprint["board_id"] = board_id
                     active_sprints.append(sprint)
-                    logging.info(
-                        f"Found active sprint: {sprint['name']} in board {board_name}"
-                    )
+                    msg = f"Found: {sprint['name']} in board {board_name}"
+                    logging.info(msg)
 
             except requests.exceptions.RequestException:
                 logging.warning(f"Could not fetch sprints for board {board_name}")

@@ -508,6 +508,8 @@ def main(config_path):
         "pr_url"
     ])
     min_days = config.get("subset_min_days", 7)
+    logging.info(f"Creating subset of PRs aged between {min_days} and {config.get('subset_max_days', 21)} days...")
+    print(prs)
     max_days = config.get("subset_max_days", 21)
     subset = filter_prs(DataFrame(prs), columns, min_days, max_days)
     mk_subset_file(subset, output_directory)
