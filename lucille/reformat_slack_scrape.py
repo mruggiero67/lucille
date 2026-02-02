@@ -18,8 +18,17 @@ def clean_text(text):
     return text.strip()
 
 
-def parse_slack_entry(entry_lines):
-    """Parse a single Slack entry and return a structured log line."""
+def parse_slack_entry(entry_lines, date_str=None):
+    """
+    Parse a single Slack entry and return a structured log line.
+
+    Args:
+        entry_lines: List of lines from a single Slack entry
+        date_str: Date string in YYYY-MM-DD format (defaults to current date)
+
+    Returns:
+        Formatted log line string, or None if parsing fails
+    """
     if not entry_lines:
         return None
 
@@ -54,40 +63,67 @@ def parse_slack_entry(entry_lines):
     )
 
     # Create single log line
-    # NB: this pegs to current date; Slack scrapes don't have dates.
+    # NB: this pegs to current date if not provided; Slack scrapes don't have dates.
     # You will have to manually adjust the dates.
-    current_time = datetime.now().strftime("%Y-%m-%d")
-    log_line = f"{current_time} {username} ({timestamp}): {content}"
+    if date_str is None:
+        date_str = datetime.now().strftime("%Y-%m-%d")
+    log_line = f"{date_str} {username} ({timestamp}): {content}"
 
     return log_line
 
 
-def convert_slack_scrape_to_logs(input_file, output_file=None):
-    """Convert Slack scrape file to log format."""
-    try:
-        with open(input_file, "r", encoding="utf-8") as f:
-            content = f.read()
-    except FileNotFoundError:
-        print(f"Error: File '{input_file}' not found.")
-        return
-    except Exception as e:
-        print(f"Error reading file: {e}")
-        return
+def transform_slack_entries(content, date_str=None):
+    """
+    Transform Slack scrape content into log lines (pure function).
 
+    Args:
+        content: Raw Slack scrape content string
+        date_str: Date string in YYYY-MM-DD format (defaults to current date)
+
+    Returns:
+        List of formatted log line strings
+    """
     # Split by double newlines (blank line delimiters)
     entries = content.split("\n\n")
 
     log_lines = []
 
-    for i, entry in enumerate(entries):
+    for entry in entries:
         if not entry.strip():
             continue
 
         entry_lines = entry.split("\n")
-        log_line = parse_slack_entry(entry_lines)
+        log_line = parse_slack_entry(entry_lines, date_str)
 
         if log_line:
             log_lines.append(log_line)
+
+    return log_lines
+
+
+def convert_slack_scrape_to_logs(input_file, output_file=None):
+    """
+    Convert Slack scrape file to log format (I/O wrapper).
+
+    Args:
+        input_file: Path to input file
+        output_file: Optional path to output file (prints to stdout if None)
+
+    Returns:
+        List of log lines, or None if error occurred
+    """
+    try:
+        with open(input_file, "r", encoding="utf-8") as f:
+            content = f.read()
+    except FileNotFoundError:
+        print(f"Error: File '{input_file}' not found.")
+        return None
+    except Exception as e:
+        print(f"Error reading file: {e}")
+        return None
+
+    # Transform content (pure function)
+    log_lines = transform_slack_entries(content)
 
     # Output results
     if output_file:
@@ -98,6 +134,7 @@ def convert_slack_scrape_to_logs(input_file, output_file=None):
             print(f"Successfully converted {len(log_lines)} entries to '{output_file}'")
         except Exception as e:
             print(f"Error writing to output file: {e}")
+            return None
     else:
         # Print to stdout
         for line in log_lines:

@@ -41,18 +41,22 @@ def parse_csv(csv_path: str) -> list[dict]:
     return alerts
 
 
-def filter_last_n_weeks(alerts: list[dict], n_weeks: int = 4) -> list[dict]:
+def filter_last_n_weeks(alerts: list[dict], n_weeks: int = 4, reference_date: datetime = None) -> list[dict]:
     """
     Filter alerts to only include those from the last n weeks.
 
     Args:
         alerts: List of alert dictionaries
         n_weeks: Number of weeks to include
+        reference_date: Reference date to count back from (defaults to now)
 
     Returns:
         Filtered list of alerts
     """
-    cutoff_date = datetime.now() - timedelta(weeks=n_weeks)
+    if reference_date is None:
+        reference_date = datetime.now()
+
+    cutoff_date = reference_date - timedelta(weeks=n_weeks)
     filtered_alerts = []
 
     for alert in alerts:

@@ -154,11 +154,11 @@ def calculate_summary_statistics(cycle_times: List[Dict[str, float]]) -> Dict[st
     df = pd.DataFrame(total_times)
 
     return {
-        'average_cycle_time': float(df.mean()),
-        'std_dev': float(df.std()),
-        'median_cycle_time': float(df.median()),
-        'min_cycle_time': float(df.min()),
-        'max_cycle_time': float(df.max()),
+        'average_cycle_time': float(df.mean().iloc[0]),
+        'std_dev': float(df.std().iloc[0]),
+        'median_cycle_time': float(df.median().iloc[0]),
+        'min_cycle_time': float(df.min().iloc[0]),
+        'max_cycle_time': float(df.max().iloc[0]),
         'average_deployment_wait': sum(deployment_waits) / len(deployment_waits),
     }
 

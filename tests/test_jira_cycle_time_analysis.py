@@ -396,16 +396,16 @@ def test_calculate_distribution(multiple_cycle_times):
 def test_calculate_distribution_single_category():
     """Test distribution when all issues fall in one category."""
     cycle_times = [
-        {state: 0.2 for state in STATES},
-        {state: 0.3 for state in STATES},
-        {state: 0.1 for state in STATES},
+        {state: 0.2 for state in STATES},  # 0.2 * 7 = 1.4 days -> 0-2 days
+        {state: 0.3 for state in STATES},  # 0.3 * 7 = 2.1 days -> 3-5 days
+        {state: 0.1 for state in STATES},  # 0.1 * 7 = 0.7 days -> 0-2 days
     ]
 
     result = calculate_distribution(cycle_times)
 
-    # All should be in 0-2 days
-    assert result['0-2 days'] == 3
-    assert result['3-5 days'] == 0
+    # Two should be in 0-2 days (1.4 and 0.7), one in 3-5 days (2.1)
+    assert result['0-2 days'] == 2
+    assert result['3-5 days'] == 1
     assert result['6-10 days'] == 0
 
 
