@@ -27,6 +27,8 @@ class SlackDeploymentParser:
             r"(?i)(?:production|prod)\s+deployment\s+complete\s*[-:]\s*(\w+[-\w]*)",
             r"(?i)(\w+[-\w]*)\s+(?:is\s+)?(?:now\s+)?live\s+(?:in\s+)?(?:production|prod)",
             r"(?i)released?\s+(\w+[-\w]*)\s+(?:v?[\d.]+\s+)?to\s+(?:production|prod)",
+            r"(?i)New release published.*?<https://github\.com/jarisdev/(\w+[-\w]*)\|",
+
         ]
 
         # Time patterns for Slack timestamps
@@ -76,11 +78,11 @@ class SlackDeploymentParser:
         Format 3: "2025-10-24 GitHub (2:00 AM): GitHub APP 2:00 AM New release..."
         """
         # Pattern 1: Match the specific format with "deployed" keyword
-        pattern1 = r"^(\d{4}-\d{2}-\d{2})\s+deployed\s+(\w+)\s+(\d{1,2}:\d{2})\s+(AM|PM)\s+(\S+)\s+([\d.]+)\s+released"
+        pattern1 = r"^(\d{4}-\d{2}-\d{2})\s+deployed\s+([\w\s]+?)\s+(\d{1,2}:\d{2})\s+(AM|PM)\s+(\S+)\s+([\d.]+)\s+released"
         match = re.match(pattern1, line)
         if match:
             date = match.group(1)
-            user = match.group(2)
+            user = match.group(2).strip()
             time = match.group(3)
             meridiem = match.group(4)
             service = match.group(5)
@@ -98,11 +100,11 @@ class SlackDeploymentParser:
             }
 
         # Pattern 2: Match standard format "2025-05-20 username time message"
-        pattern2 = r"^(\d{4}-\d{2}-\d{2})\s+(\w+)\s+(\d{1,2}:\d{2})\s+(AM|PM)\s+(.+)"
+        pattern2 = r"^(\d{4}-\d{2}-\d{2})\s+([\w\s]+?)\s+(\d{1,2}:\d{2})\s+(AM|PM)\s+(.+)"
         match = re.match(pattern2, line)
         if match:
             date = match.group(1)
-            user = match.group(2)
+            user = match.group(2).strip()
             time = match.group(3)
             meridiem = match.group(4)
             rest_of_line = match.group(5)
@@ -140,11 +142,12 @@ class SlackDeploymentParser:
             }
 
         # Pattern 3: Match format with parenthetical time "2025-10-24 Username (2:00 AM): rest"
-        pattern3 = r"^(\d{4}-\d{2}-\d{2})\s+(\w+)\s+\((\d{1,2}:\d{2})\s+(AM|PM)\):\s+(.+)"
+        # or without colon "2025-01-23 GitHub (10:21 AM) New release..."
+        pattern3 = r"^(\d{4}-\d{2}-\d{2})\s+([\w\s]+?)\s+\((\d{1,2}:\d{2})\s+(AM|PM)\):?\s*(.+)"
         match = re.match(pattern3, line)
         if match:
             date = match.group(1)
-            user = match.group(2)
+            user = match.group(2).strip()
             time = match.group(3)
             meridiem = match.group(4)
             rest_of_line = match.group(5)
@@ -180,6 +183,27 @@ class SlackDeploymentParser:
                 "timestamp": timestamp,
             }
 
+        # Pattern 4: Match lines without AM/PM that have service and version
+        # Format: "2025-06-12 bryan 2:15 PartnerGateway 4.26.3"
+        pattern4 = r"^(\d{4}-\d{2}-\d{2})\s+([\w\s]+?)\s+(\d{1,2}:\d{2})\s+([A-Za-z][A-Za-z0-9_-]+)\s+([\d.]+)"
+        match = re.match(pattern4, line)
+        if match:
+            date = match.group(1)
+            user = match.group(2).strip()
+            time = match.group(3)
+            service = match.group(4)
+            version = match.group(5)
+            timestamp = f"{date} {time}"
+            return {
+                "date": date,
+                "time": time,
+                "user": user,
+                "service": service,
+                "version": version,
+                "raw_message": line.strip(),
+                "timestamp": timestamp,
+            }
+
         # Fallback: try to extract any deployment-like patterns from the line
         # Look for common deployment keywords
         if any(
@@ -197,9 +221,9 @@ class SlackDeploymentParser:
                 else "unknown"
             )
 
-            # Try to extract username - look for word at the beginning after date
-            user_match = re.search(r"^\d{4}-\d{2}-\d{2}\s+(\w+)", line)
-            user = user_match.group(1) if user_match else "unknown"
+            # Try to extract username - look for word(s) at the beginning after date
+            user_match = re.search(r"^\d{4}-\d{2}-\d{2}\s+([\w\s]+?)\s+\d{1,2}:\d{2}", line)
+            user = user_match.group(1).strip() if user_match else "unknown"
 
             # Try to extract service name - look for capitalized word before version
             service_match = re.search(r"([A-Z][A-Za-z][A-Za-z0-9_-]*)\s+(?:v?[\d.]+)", line)
