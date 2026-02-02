@@ -200,6 +200,9 @@ def fetch_repositories(org: str, token: str) -> List[str]:
 
 def fetch_dependabot_alerts(repo: str, token: str) -> List[dict]:
     """
+    TODO allow dependabot API calls to be paginated
+    via cursor-based pagination
+
     Fetch Dependabot alerts for a repository.
 
     Side-effecting function that makes API calls.
@@ -222,7 +225,7 @@ def fetch_dependabot_alerts(repo: str, token: str) -> List[dict]:
 
     while True:
         url = f'https://api.github.com/repos/{repo}/dependabot/alerts'
-        params = {'state': 'open', 'page': page, 'per_page': 100}
+        params = {'state': 'open'}
 
         try:
             response = requests.get(url, headers=headers, params=params)
@@ -245,7 +248,7 @@ def fetch_dependabot_alerts(repo: str, token: str) -> List[dict]:
             page += 1
 
         except requests.exceptions.RequestException as e:
-            logger.warning(f"---------------> Failed to fetch Dependabot alerts for {repo}: {e}")
+            logger.warning(f"--------> Failed to fetch Dependabot alerts for {repo}: {e} {response.json()}")
             break
 
     return alerts
