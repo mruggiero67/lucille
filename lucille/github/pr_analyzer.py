@@ -379,8 +379,8 @@ def mk_subset_file(filtered_df: DataFrame, csv_path: str):
         filtered_df: Filtered DataFrame with PR data
         csv_path: Path to save the CSV file
     """
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"pr_subset_{timestamp}.csv"
+    date_string = datetime.now().strftime("%Y_%m_%d")
+    filename = f"{date_string}_aging_prs.csv"
     csv_path = Path(csv_path) / filename
 
     filtered_df.to_csv(csv_path, index=False)
@@ -486,7 +486,7 @@ def main(config_path):
     # Extract configuration values
     github_token = config["github_token"]
     repositories = config["repositories"]
-    output_directory = config["csv_directory"]
+    output_directory = config["pr_output_directory"]
     custom_filename = config.get("output_filename")  # Optional
 
     # Initialize analyzer
@@ -497,7 +497,8 @@ def main(config_path):
     prs = analyzer.analyze_all_repositories(repositories)
 
     # Save results
-    output_file = analyzer.save_to_csv(prs, output_directory, custom_filename)
+    # no one has been asking for this feature, so commenting out for now to avoid confusion
+    # output_file = analyzer.save_to_csv(prs, output_directory, custom_filename)
 
     # save subset of PRs aged between 7 and 21 days
     columns = config.get("subset_columns", [

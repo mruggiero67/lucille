@@ -41,7 +41,7 @@ def analyze_alerts_per_day(
     try:
         with open(config_file, 'r') as f:
             config = yaml.safe_load(f)
-        output_dir = config.get('output_directory', './output')
+        output_dir = config.get('opsgenie_output_directory', './output')
         days_back = config.get('days_back', 180)
         logging.info(f"Loaded config from {config_file}, output directory: {output_dir}")
     except FileNotFoundError:
@@ -135,8 +135,8 @@ def analyze_alerts_per_day(
     # Generate filename based on title and current timestamp
     safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).rstrip()
     safe_title = safe_title.replace(' ', '_').lower()
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = f"{safe_title}_{timestamp}.png"
+    date_string = datetime.now().strftime('%Y_%m_%d')
+    filename = f"{date_string}_{safe_title}.png"
     filepath = os.path.join(output_dir, filename)
 
     plt.savefig(filepath, dpi=300, bbox_inches='tight')
@@ -156,14 +156,20 @@ def analyze_alerts_per_day(
     total_weeks = date_range.days / 7
     avg_alerts_per_week_actual = total_alerts / total_weeks if total_weeks > 0 else 0
 
+    # Save summary to text file
+    summary_filepath = save_summary_report(
+        output_dir=output_dir,
+        safe_title=safe_title,
+        alerts_per_day=alerts_per_day,
+        avg_alerts_per_day=avg_alerts_per_day,
+        avg_alerts_per_week_actual=avg_alerts_per_week_actual
+    )
+
     # Log summary statistics
     logging.info("=== Alert Analysis Summary ===")
-    logging.info(f"Total alerts: {total_alerts}")
     logging.info(f"Date range: {alerts_per_day['date_only'].min().strftime('%Y-%m-%d')} to {alerts_per_day['date_only'].max().strftime('%Y-%m-%d')}")
-    logging.info(f"Total days with alerts: {total_days}")
     logging.info(f"Average alerts per day: {avg_alerts_per_day:.2f}")
-    logging.info(f"Average alerts per week (simple): {avg_alerts_per_week:.2f}")
-    logging.info(f"Average alerts per week (actual): {avg_alerts_per_week_actual:.2f}")
+    logging.info(f"Average alerts per week: {avg_alerts_per_week_actual:.2f}")
 
     # plt.show()
 
@@ -175,8 +181,48 @@ def analyze_alerts_per_day(
         'avg_per_week_actual': avg_alerts_per_week_actual,
         'alerts_per_day': alerts_per_day,
         'date_range_days': date_range.days,
-        'chart_saved_to': filepath
+        'chart_saved_to': filepath,
+        'summary_saved_to': summary_filepath
     }
+
+def save_summary_report(
+    output_dir: str,
+    safe_title: str,
+    alerts_per_day: pd.DataFrame,
+    avg_alerts_per_day: float,
+    avg_alerts_per_week_actual: float
+) -> str:
+    """
+    Save alert analysis summary statistics to a text file.
+
+    Args:
+        output_dir: Directory to save the summary file
+        safe_title: Sanitized title for filename
+        alerts_per_day: DataFrame with alert counts per day
+        avg_alerts_per_day: Average number of alerts per day
+        avg_alerts_per_week_actual: Average number of alerts per week
+
+    Returns:
+        Path to the saved summary file
+    """
+    # Generate date prefix
+    date_prefix = datetime.now().strftime("%Y_%m_%d")
+
+    # Generate filename
+    filename = f"{date_prefix}_{safe_title}_summary.txt"
+    filepath = os.path.join(output_dir, filename)
+
+    logging.info(f"Creating summary report: {filepath}")
+
+    # Write summary to file
+    with open(filepath, 'w') as f:
+        f.write(f"Date range: {alerts_per_day['date_only'].min().strftime('%Y-%m-%d')} to {alerts_per_day['date_only'].max().strftime('%Y-%m-%d')}\n")
+        f.write(f"Average alerts per day: {avg_alerts_per_day:.2f}\n")
+        f.write(f"Average alerts per week: {avg_alerts_per_week_actual:.2f}\n")
+
+    logging.info(f"Summary report saved to {filepath}")
+
+    return filepath
 
 # Example usage with different date parsers for OpsGenie data
 
@@ -298,17 +344,3 @@ if __name__ == "__main__":
     except Exception as e:
         logging.error(f"Error during analysis: {e}")
         logging.error("Make sure the CSV file exists and the date format matches your parser")
-
-    # Example 2: If you had a different CSV with different date format
-    # results = analyze_alerts_per_day(
-    #     csv_file='other_alerts.csv',
-    #     date_parser=parse_us_date,
-    #     date_column='alert_date',
-    #     title='Daily Alert Analysis',
-    #     config_file='config.yaml'
-    # )
-
-    # Example 3: Custom date parser for your specific format
-    # def custom_parser(date_str: str) -> datetime:
-    #     # Handle your specific date format here
-    #     return datetime.strptime(date_str, '%Y-%m-%d')

@@ -152,8 +152,9 @@ def get_code_location(alert: dict, alert_type: str) -> str:
 def fetch_repositories(org: str, token: str) -> List[str]:
     """
     Fetch all repository names for an organization.
+    Filters out archived repositories
 
-    Side-effecting function that makes API calls.
+    Side-effecting function that makes API calls
 
     Args:
         org: GitHub organization name
@@ -185,7 +186,8 @@ def fetch_repositories(org: str, token: str) -> List[str]:
         if not page_repos:
             break
 
-        repos.extend([f"{org}/{repo['name']}" for repo in page_repos])
+        # filter out archived repositories
+        repos.extend([f"{org}/{repo['name']}" for repo in page_repos if not repo.get('archived', False)])
         logger.debug(f"Fetched page {page}: {len(page_repos)} repositories")
 
         page += 1
@@ -617,8 +619,7 @@ def main():
         logger.error("Output directory is required. Provide via 'csv_directory' key in config file")
         return 1
 
-    output_dir = Path(csv_directory)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = Path(config.get('output_directory'))
 
     # Fetch repositories
     try:

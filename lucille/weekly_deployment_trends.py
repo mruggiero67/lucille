@@ -203,54 +203,10 @@ def create_summary_report(
         output_path: Path where the summary text file should be saved
     """
     logger.info(f"Creating summary report: {output_path}")
-
-    # Calculate trend direction
-    _, _, slope = calculate_trend_line(weekly_data)
-
-    if slope > 0.5:
-        trend_description = "INCREASING (deployment velocity is growing)"
-    elif slope < -0.5:
-        trend_description = "DECREASING (deployment velocity is declining)"
-    else:
-        trend_description = "STABLE (deployment velocity is relatively constant)"
-
     with open(output_path, 'w') as f:
-        f.write("=" * 70 + "\n")
-        f.write("WEEKLY DEPLOYMENT TRENDS ANALYSIS\n")
-        f.write("=" * 70 + "\n\n")
-
-        f.write("SUMMARY STATISTICS\n")
-        f.write("-" * 70 + "\n")
-        f.write(f"Date Range: {statistics['first_week'].strftime('%Y-%m-%d')} to "
+        f.write(f"Date Range: week starting {statistics['first_week'].strftime('%Y-%m-%d')} to week starting "
                 f"{statistics['last_week'].strftime('%Y-%m-%d')}\n")
-        f.write(f"Total Weeks: {statistics['total_weeks']}\n")
-        f.write(f"Total Deployments: {statistics['total_deployments']}\n")
         f.write(f"Average Deployments per Week: {statistics['average_per_week']:.2f}\n")
-        f.write(f"Median Deployments per Week: {statistics['median_per_week']:.1f}\n")
-        f.write(f"Highest Week: {statistics['max_week']} deployments\n")
-        f.write(f"Lowest Week: {statistics['min_week']} deployments\n")
-        f.write(f"Standard Deviation: {statistics['std_dev']:.2f}\n\n")
-
-        f.write("TREND ANALYSIS\n")
-        f.write("-" * 70 + "\n")
-        f.write(f"Trend Direction: {trend_description}\n")
-        f.write(f"Trend Slope: {slope:.3f} deployments per week\n\n")
-
-        f.write("WEEKLY BREAKDOWN\n")
-        f.write("-" * 70 + "\n")
-        f.write(f"{'Week Starting':<15} {'Deployments':<12} {'vs Average':<15}\n")
-        f.write("-" * 70 + "\n")
-
-        avg = statistics['average_per_week']
-        for _, row in weekly_data.iterrows():
-            week_str = row['week_start'].strftime('%Y-%m-%d')
-            count = row['deployment_count']
-            diff = count - avg
-            diff_str = f"{diff:+.1f}" if abs(diff) > 0.1 else "±0.0"
-            f.write(f"{week_str:<15} {count:<12} {diff_str:<15}\n")
-
-        f.write("\n" + "=" * 70 + "\n")
-
     logger.info(f"Summary report saved to {output_path}")
 
 
