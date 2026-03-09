@@ -257,50 +257,75 @@ def build_section(title, content):
     return f"<h2>{title}</h2>\n{content}\n"
 
 
-def build_page_body(output_dir):
-    """Assemble the full page body from all sections."""
+def load_page_layout(layout_path):
+    """Load the page layout definition from a JSON file.
+
+    Args:
+        layout_path: Path to the JSON layout file.
+
+    Returns:
+        Parsed layout dict with a 'sections' key.
+    """
+    path = Path(layout_path).expanduser()
+    if not path.exists():
+        raise FileNotFoundError(f"Layout file not found: {path}")
+    with open(path, "r") as f:
+        return json.load(f)
+
+
+def render_content_node(node, output_dir, datestring):
+    """Render a single content node to Confluence storage-format HTML.
+
+    Supported node types:
+        image   — Confluence image macro; skipped silently if file is absent.
+        summary — Paragraphs read from a .txt file.
+        table   — HTML table built from a CSV file.
+
+    Args:
+        node:       Dict with at minimum a 'type' key and a 'file' key.
+        output_dir: Base Path for resolving relative file paths.
+        datestring: Date token (YYYY_MM_DD) substituted for '{date}' in file paths.
+
+    Returns:
+        HTML string (may be empty string if file is missing or type is unknown).
+    """
+    node_type = node.get("type")
+    resolved = Path(output_dir) / node["file"].format(date=datestring)
+
+    if node_type == "image":
+        return build_image_macro(resolved.name) if resolved.exists() else ""
+
+    if node_type == "summary":
+        return build_summary_block(read_summary(resolved))
+
+    if node_type == "table":
+        return build_table_from_csv(resolved, columns=node.get("columns"))
+
+    print(f"WARNING: unknown content node type '{node_type}' — skipping")
+    return ""
+
+
+def build_page_body(output_dir, layout_path):
+    """Assemble the full page body driven by a JSON layout file.
+
+    Args:
+        output_dir:  Directory containing the generated CSVs and PNGs.
+        layout_path: Path to the JSON layout file (see confluence_engineering_page.json).
+
+    Returns:
+        Confluence storage-format HTML string.
+    """
     d = Path(output_dir)
-    sections = []
     datestring = datetime.now().strftime("%Y_%m_%d")
+    layout = load_page_layout(layout_path)
 
-    # --- Deployment frequency ---
-    deploy_content = ""
-    deploy_summary = read_summary(d / "deployments" / f"{datestring}_weekly_deployment_summary.txt")
-    deploy_chart = d / "deployments" / f"{datestring}_weekly_deployment_trends.png"
-    if deploy_chart.exists():
-        deploy_content += build_image_macro(deploy_chart.name)
-    deploy_content += build_summary_block(deploy_summary)
-    sections.append(build_section("Deployment frequency", deploy_content))
-
-    # --- OpsGenie alerts ---
-    ops_content = ""
-    ops_summary = read_summary(d / "opsgenie" / f"{datestring}_daily_opsgenie_alerts_analysis_summary.txt")
-    ops_team_chart = d / "opsgenie" / f"{datestring}_opsgenie_alerts_last_6_weeks.png"
-    ops_daily_chart = d / "opsgenie" / f"{datestring}_opsgenie_alerts_analysis.png"
-    if ops_team_chart.exists():
-        ops_content += build_image_macro(ops_team_chart.name)
-    if ops_daily_chart.exists():
-        ops_content += build_image_macro(ops_daily_chart.name)
-    ops_content += build_summary_block(ops_summary)
-    sections.append(build_section("Opsgenie Alerts", ops_content))
-
-    # --- GitHub security alerts ---
-    sec_content = ""
-    sec_chart = d / "github" / f"{datestring}_github_security_alerts_severity.png"
-    if sec_chart.exists():
-        sec_content += build_image_macro(sec_chart.name)
-    sec_content += build_table_from_csv(
-        d / "github" / f"{datestring}_github_security_alerts_all.csv",
-        columns=["repository", "alert_type", "alert_link", "created_at", "age_days", "severity"],
-    )
-    sections.append(build_section("Github Security Alerts", sec_content))
-
-    # --- Pull requests 7-21 days ---
-    pr_content = build_table_from_csv(
-        d / "pull_requests" / f"{datestring}_aging_prs.csv",
-        columns=["repo_name", "title", "pr_url", "author", "created_at", "age_days"],
-    )
-    sections.append(build_section("Pull requests: age between 7 and 21 days", pr_content))
+    sections = []
+    for section in layout["sections"]:
+        content = "".join(
+            render_content_node(node, d, datestring)
+            for node in section.get("content", [])
+        )
+        sections.append(build_section(section["title"], content))
 
     return "\n".join(sections)
 
@@ -346,6 +371,11 @@ def main():
         help="Override page title (default: next Monday's date, e.g. 2026-02-09)",
     )
     parser.add_argument(
+        "--layout",
+        default="~/bin/confluence_engineering_page.json",
+        help="Path to JSON page layout file (default: ~/bin/confluence_engineering_page.json)",
+    )
+    parser.add_argument(
         "--dry-run", action="store_true",
         help="Generate HTML body and print it without publishing",
     )
@@ -355,7 +385,7 @@ def main():
     title = args.page_title or next_monday()
 
     print(f"Building page: {title}")
-    body = build_page_body(args.output_dir)
+    body = build_page_body(args.output_dir, args.layout)
 
     if args.dry_run:
         print("\n--- Generated Confluence storage format ---\n")

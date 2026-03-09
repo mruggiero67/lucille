@@ -1,0 +1,35 @@
+[
+  {
+    "key": "FED-1001",
+    "fields": {
+      "issuetype": {"name": "Story"},
+      "labels": [],
+      "created": "2026-01-20T09:00:00.000+0000",
+      "status": {"name": "Done"},
+      "summary": "Add dashboard widget",
+      "project": {"key": "FED"}
+    }
+  },
+  {
+    "key": "FED-1010",
+    "fields": {
+      "issuetype": {"name": "Task"},
+      "labels": ["agent-initiated"],
+      "created": "2026-02-18T10:00:00.000+0000",
+      "status": {"name": "Done"},
+      "summary": "Refactor analytics pipeline",
+      "project": {"key": "FED"}
+    }
+  },
+  {
+    "key": "FED-1015",
+    "fields": {
+      "issuetype": {"name": "Bug"},
+      "labels": ["hotfix"],
+      "created": "2026-03-01T16:00:00.000+0000",
+      "status": {"name": "In Progress"},
+      "summary": "Null pointer in analytics export after v1.4.2 deploy",
+      "project": {"key": "FED"}
+    }
+  }
+]
