@@ -1,0 +1,23 @@
+jira:
+  project: SEC
+  issue_type: Task
+  summary_template: "[Q{quarter} {year}] PCI Access Review — {resource_name}"
+  assignee_column: owner_email
+  due_date: "{quarter_end_date}"
+  labels:
+    - pci-compliance
+    - access-review
+    - "Q{quarter}-{year}"
+  priority: High
+
+csv: ~/Desktop/debris/2026_03_10_access_control_roles.csv
+template: ~/Desktop/debris/2026_02_10_jira_role_review_template.txt
+
+derived_variables:
+  - quarter
+  - year
+  - quarter_end_date
+
+output_csv: ~/Desktop/debris/2026_03_10_created_tickets.csv
+
+dry_run: false

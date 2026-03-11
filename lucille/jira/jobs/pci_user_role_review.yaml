@@ -1,0 +1,33 @@
+jira:
+  project: SEC
+  issue_type: Task
+  summary_template: "[Q{quarter} {year}] PCI User Role Review — {supervisor}"
+  assignee_column: supervisor
+  due_date: "{quarter_end_date}"
+  labels:
+    - pci-compliance
+    - access-review
+    - "Q{quarter}-{year}"
+  priority: High
+
+csv: ~/Desktop/debris/2026_03_10_role_map.csv
+template: ~/Desktop/debris/2026_03_10_user_role_jira_template.txt
+
+group_by: supervisor
+table_columns:
+  - department
+  - team
+  - email
+  - role
+table_sort_by:
+  - email
+  - role
+
+derived_variables:
+  - quarter
+  - year
+  - quarter_end_date
+
+output_csv: ~/Desktop/debris/2026_03_10_user_role_created_tickets.csv
+
+dry_run: false
