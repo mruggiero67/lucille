@@ -39,13 +39,13 @@ clean_2x2: ## Archive CSVs, TXTs, and PNGs to ~/Desktop/debris/2x2/archive
 	@mkdir -p ~/Desktop/debris/archive && find $(2X2_DIR) -type f \( -name "*.csv" -o -name "*.txt" -o -name "*.png" \) -exec mv {} ~/Desktop/debris/archive/ \;
 
 publish:
-	python lucille/publish.py --output-dir $(2X2_DIR) --config ~/bin/jira_epic_config.yaml
+	python lucille/publish.py --output-dir $(2X2_DIR) --config ~/bin/jira_epic_config.yaml --layout ~/bin/confluence_engineering_page.json
 
 support:
 	python lucille/jira/sup_cycle_time.py --c ~/bin/jira.yaml --o $(2X2_DIR)/support
 	python lucille/jira/sup_ticket_volume.py --c ~/bin/jira.yaml --o $(2X2_DIR)/support
 
-2x2: deployments prs opsgenie github_security support publish
+2x2: deployments opsgenie github_security support publish
 
 .PHONY: list
 
