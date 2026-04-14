@@ -7,10 +7,18 @@ from typing import List, Dict, Optional
 import time
 from dateutil import parser as date_parser
 import os
+import sys
 import logging
 import argparse
 import yaml
 import traceback
+from pathlib import Path
+
+try:
+    from lucille.github.github_utils import fetch_org_repos
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+    from lucille.github.github_utils import fetch_org_repos
 
 # Configure logging
 logging.basicConfig(
@@ -1015,8 +1023,13 @@ if __name__ == "__main__":
             logger.error(f"github_token not found in {config_file}")
             raise ValueError(f"github_token is required in {config_file}")
 
-        # Get repositories from config, with fallback to examples
-        repositories = config.get("repositories")
+        # Dynamically fetch all non-archived repos for the org
+        org = config.get("org")
+        if not org:
+            logger.error(f"org not found in {config_file}")
+            raise ValueError(f"org is required in {config_file}")
+        repo_names = fetch_org_repos(org, github_token)
+        repositories = [{"org": org, "repo": r} for r in repo_names]
 
         logger.info(f"Starting analysis of {len(repositories)} repositories...")
         logger.info("Repositories to analyze:")

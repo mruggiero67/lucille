@@ -10,11 +10,19 @@ import yaml
 import requests
 import csv
 import os
+import sys
 from datetime import datetime, timedelta
 from collections import defaultdict
+from pathlib import Path
 from typing import Dict, List
 import argparse
 import logging
+
+try:
+    from lucille.github.github_utils import fetch_org_repos
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+    from lucille.github.github_utils import fetch_org_repos
 
 # Set up logging
 logging.basicConfig(
@@ -29,7 +37,9 @@ class GitHubAnalyzer:
         self.config = self.load_config(config_path)
         self.github_token = self.config["github_token"]
         self.csv_directory = self.config["csv_directory"]
-        self.repositories = self.config["repositories"]
+        org = self.config["org"]
+        repo_names = fetch_org_repos(org, self.github_token)
+        self.repositories = [{"org": org, "repo": r} for r in repo_names]
 
         # Ensure CSV directory exists
         os.makedirs(self.csv_directory, exist_ok=True)

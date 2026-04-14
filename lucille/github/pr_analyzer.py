@@ -17,6 +17,12 @@ import argparse
 from pandas import DataFrame
 import logging
 
+try:
+    from lucille.github.github_utils import fetch_org_repos
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+    from lucille.github.github_utils import fetch_org_repos
+
 
 class GitHubPRAnalyzer:
     def __init__(self, token: str):
@@ -419,23 +425,11 @@ def validate_config(config: Dict[str, Any]) -> bool:
     Returns:
         True if valid, False otherwise
     """
-    required_keys = ["github_token", "repositories", "csv_directory"]
+    required_keys = ["github_token", "org"]
 
     for key in required_keys:
         if key not in config:
             print(f"Error: Missing required configuration key '{key}'")
-            return False
-
-    if not isinstance(config["repositories"], list):
-        print("Error: 'repositories' must be a list")
-        return False
-
-    for i, repo in enumerate(config["repositories"]):
-        if not isinstance(repo, dict):
-            print(f"Error: Repository {i+1} must be a dictionary")
-            return False
-        if "org" not in repo or "repo" not in repo:
-            print(f"Error: Repository {i+1} must have 'org' and 'repo' keys")
             return False
 
     return True
@@ -485,9 +479,12 @@ def main(config_path):
 
     # Extract configuration values
     github_token = config["github_token"]
-    repositories = config["repositories"]
+    org = config["org"]
     output_directory = config["pr_output_directory"]
-    custom_filename = config.get("output_filename")  # Optional
+
+    # Dynamically fetch all non-archived repos for the org
+    repo_names = fetch_org_repos(org, github_token)
+    repositories = [{"org": org, "repo": r} for r in repo_names]
 
     # Initialize analyzer
     analyzer = GitHubPRAnalyzer(github_token)

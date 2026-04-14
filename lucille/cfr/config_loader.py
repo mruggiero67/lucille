@@ -16,6 +16,12 @@ import yaml
 from pathlib import Path
 from typing import Any, Dict, List
 
+try:
+    from lucille.github.github_utils import fetch_org_repos
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+    from lucille.github.github_utils import fetch_org_repos
+
 DEFAULT_JIRA_EPIC_CONFIG = Path.home() / "bin" / "jira_epic_config.yaml"
 DEFAULT_LEAD_TIME_CONFIG = Path.home() / "bin" / "lead_time_config.yaml"
 DEFAULT_GITHUB_CONFIG = Path.home() / "bin" / "github_config.yaml"
@@ -64,20 +70,21 @@ def load_config(
         "github": {
             "token": github_cfg.get("github_token"),
             "org": github_cfg.get("org"),
-            "repositories": github_cfg.get("repositories", []),
         },
     }
 
     _validate(config)
 
-    # Build the effective repo list: scoped_repos ∩ all repos in github_config
-    all_repos: List[str] = [r["repo"] for r in config["github"]["repositories"]]
+    # Dynamically fetch all non-archived repos from the GitHub org
+    all_repos: List[str] = fetch_org_repos(config["github"]["org"], config["github"]["token"])
+
+    # Build the effective repo list: scoped_repos ∩ all org repos (optional filter)
     scoped: List[str] = config["cfr"].get("scoped_repos") or []
     if scoped:
         unknown = [r for r in scoped if r not in all_repos]
         if unknown:
             print(
-                f"Warning: scoped_repos not found in github_config.yaml: {unknown}",
+                f"Warning: scoped_repos not found in GitHub org: {unknown}",
                 file=sys.stderr,
             )
         config["effective_repos"] = [r for r in scoped if r in all_repos]

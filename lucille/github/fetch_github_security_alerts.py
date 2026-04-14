@@ -10,6 +10,7 @@ Fetches open security alerts from GitHub organization repositories and generates
 
 import argparse
 import logging
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
@@ -18,6 +19,12 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import requests
 import yaml
+
+try:
+    from lucille.github.github_utils import fetch_org_repos
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+    from lucille.github.github_utils import fetch_org_repos
 
 # Configure logging at module level
 logging.basicConfig(
@@ -148,56 +155,6 @@ def get_code_location(alert: dict, alert_type: str) -> str:
         return 'N/A'
     return 'N/A'
 
-
-def fetch_repositories(org: str, token: str) -> List[str]:
-    """
-    Fetch all repository names for an organization.
-    Filters out archived repositories
-
-    Side-effecting function that makes API calls
-
-    Args:
-        org: GitHub organization name
-        token: GitHub personal access token
-
-    Returns:
-        List of repository names (org/repo format)
-    """
-    logger.info(f"Fetching repositories for organization: {org}")
-
-    headers = {
-        'Authorization': f'token {token}',
-        'Accept': 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28'
-    }
-
-    repos = []
-    page = 1
-    per_page = 100
-
-    while True:
-        url = f'https://api.github.com/orgs/{org}/repos'
-        params = {'page': page, 'per_page': per_page, 'type': 'all'}
-
-        response = requests.get(url, headers=headers, params=params)
-        response.raise_for_status()
-
-        page_repos = response.json()
-        if not page_repos:
-            break
-
-        # filter out archived repositories
-        repos.extend([f"{org}/{repo['name']}" for repo in page_repos if not repo.get('archived', False)])
-        logger.debug(f"Fetched page {page}: {len(page_repos)} repositories")
-
-        page += 1
-
-        # Check if we've reached the last page
-        if len(page_repos) < per_page:
-            break
-
-    logger.info(f"Found {len(repos)} repositories")
-    return repos
 
 
 def fetch_dependabot_alerts(repo: str, token: str) -> List[dict]:
@@ -621,9 +578,10 @@ def main():
 
     output_dir = Path(config.get('output_directory'))
 
-    # Fetch repositories
+    # Fetch all non-archived repositories for the org
     try:
-        repos = fetch_repositories(org, token)
+        repo_names = fetch_org_repos(org, token)
+        repos = [f"{org}/{r}" for r in repo_names]
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to fetch repositories: {e}")
         return 1

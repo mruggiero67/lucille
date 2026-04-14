@@ -47,6 +47,12 @@ import requests
 import yaml
 import pandas as pd
 
+try:
+    from lucille.github.github_utils import fetch_org_repos
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+    from lucille.github.github_utils import fetch_org_repos
+
 # Reuse the pure charting functions from the existing weekly_deployment_trends module
 try:
     from lucille.weekly_deployment_trends import (
@@ -103,12 +109,8 @@ def load_config(
         logger.error("github_token and org are required in github_config.yaml")
         sys.exit(1)
 
-    all_repos = [r["repo"] for r in gh.get("repositories", [])]
     deploy_history_cfg = epic.get("deploy_history", {})
     cfr = epic.get("cfr", {})
-    # deploy_history.repos is the authoritative full production service list.
-    # cfr.scoped_repos is a narrower subset used only for CFR analysis.
-    deploy_repos = deploy_history_cfg.get("repos") or []
     output_dir = cfr.get("output_directory", str(Path.home() / "Desktop" / "debris"))
     graph_output_dir = deploy_history_cfg.get(
         "graph_output_directory",
@@ -118,8 +120,6 @@ def load_config(
     return {
         "token": token,
         "org": org,
-        "all_repos": all_repos,
-        "deploy_repos": deploy_repos,
         "output_dir": Path(output_dir),
         "graph_output_dir": Path(graph_output_dir),
     }
@@ -355,18 +355,13 @@ def main() -> None:
     output_dir = args.output_dir or cfg["output_dir"]
     graph_output_dir = args.graph_output_dir or cfg["graph_output_dir"]
 
-    # Resolve repo list: CLI → deploy_history.repos → all repos
+    # Resolve repo list: CLI → all non-archived org repos
     repos = args.repos
     if not repos:
-        repos = cfg["deploy_repos"] or cfg["all_repos"]
+        repos = fetch_org_repos(cfg["org"], cfg["token"])
     if not repos:
-        logger.error("No repos specified and none found in config.")
+        logger.error("No repos found for org.")
         sys.exit(1)
-
-    # Validate repos against the known list (warn, don't block)
-    unknown = [r for r in repos if r not in cfg["all_repos"]]
-    if unknown:
-        logger.warning(f"Repos not found in github_config.yaml (will still attempt): {unknown}")
 
     since = datetime.strptime(args.since, "%Y-%m-%d").replace(tzinfo=timezone.utc)
     logger.info(f"Fetching releases since {args.since} for {len(repos)} repos: {repos}")
