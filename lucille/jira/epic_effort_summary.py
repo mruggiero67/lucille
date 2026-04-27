@@ -19,7 +19,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from lucille.jira.utils import create_jira_session, fetch_all_issues
+from utils import create_jira_session, fetch_all_issues
 
 logging.basicConfig(
     format="%(levelname)-8s %(asctime)s %(message)s",

@@ -47,6 +47,9 @@ support:
 
 2x2: deployments opsgenie github_security support publish
 
+cost:
+	python lucille/jira/epic_effort_summary.py --days 30 --output-dir ~/Desktop/debris --config ~/bin/jira.yaml
+
 .PHONY: list
 
 list:
