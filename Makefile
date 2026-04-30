@@ -50,6 +50,9 @@ support:
 cost:
 	python lucille/jira/epic_effort_summary.py --days 30 --output-dir ~/Desktop/debris --config ~/bin/jira.yaml
 
+stale_jira:
+	python lucille/jira/stale_tickets_to_csv.py ~/bin/jira_epic_config.yaml
+
 .PHONY: list
 
 list:
