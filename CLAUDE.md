@@ -31,6 +31,16 @@ The codebase is organized around three primary data sources:
 - `slack_deploys.py`: Parses Slack deployment logs into CSV
 - `opsgenie_graph.py`: OpsGenie incident visualization
 
+**Vendor Spend** (`lucille/vendor_spend/`)
+- Two-script pipeline for the Friday 6-week vendor-spend bar chart (AWS, Databricks, Datadog).
+- `fetch_vendor_spend.py`: orchestrator; calls the three vendor clients and writes a long-format CSV to `~/Desktop/debris/YYYY_MM_DD_vendor_spend.csv`.
+- `graph_vendor_spend.py`: reads that CSV and emits a grouped Matplotlib bar chart PNG alongside it.
+- Vendor clients: `aws_cost.py` (boto3 Cost Explorer, `UnblendedCost`, payer account), `databricks_cost.py` (billable-usage CSV, effective list price), `datadog_cost.py` (estimated cost API).
+- `weekly_buckets.py`: pure Mon–Sun bucketing helpers; heaviest unit-test target.
+- Config lives **outside the repo** at `~/bin/vendor_spend.yaml`; secrets come from env vars (`DD_API_KEY`, `DD_APP_KEY`; AWS uses the standard boto3 credential chain).
+- Databricks auth: `databricks_auth.resolve_bearer_token` first honours `$DATABRICKS_TOKEN` (legacy PAT) if set, otherwise mints a short-lived OAuth bearer from `$DATABRICKS_CLIENT_ID` + `$DATABRICKS_CLIENT_SECRET` (account-level service principal with the *Account admin* role) against `{accounts_host}/oidc/accounts/{account_id}/v1/token`. Minted tokens are cached for the process lifetime.
+- Run with `make vendor_spend` (no scheduler wired up; run manually each Friday).
+
 ### Key Design Patterns
 
 **YAML Configuration-Driven**: Nearly all scripts accept a config file path as the primary argument. Config files contain:

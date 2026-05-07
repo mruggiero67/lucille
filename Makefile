@@ -11,6 +11,12 @@ opsgenie:
 	python lucille/opsgenie_graph.py -c ~/bin/graphs.yaml -f ~/Desktop/debris/$(DATE_PREFIX)_opsgenie.csv
 	python lucille/opsgenie_alerts_chart_weeks.py --csv ~/Desktop/debris/$(DATE_PREFIX)_opsgenie.csv --weeks 6 --output $(2X2_DIR)/opsgenie/$(DATE_PREFIX)_opsgenie_alerts_last_6_weeks.png
 
+# Vendor spend (AWS, Databricks, Datadog). AWS Cost Explorer auth uses the
+# standard boto3 credential chain (~/.aws/credentials by default).
+vendor_spend:
+	python -m lucille.vendor_spend.fetch_vendor_spend --config ~/bin/vendor_spend.yaml
+	python -m lucille.vendor_spend.graph_vendor_spend --config ~/bin/vendor_spend.yaml --csv ~/Desktop/debris/$(DATE_PREFIX)_vendor_spend.csv
+
 wip_epics:
 	python lucille/jira/filter_epics.py ~/bin/jira_epic_config.yaml
 
