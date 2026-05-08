@@ -553,7 +553,7 @@ def main() -> None:
     cfg = load_config(args.github_config, args.config)
 
     output_dir = args.output_dir or cfg["output_directory"]
-    chart_dir = args.chart_output_dir or cfg["chart_output_directory"]
+    # chart_dir = args.chart_output_dir or cfg["chart_output_directory"]
     since = _resolve_since(args.since, cfg)
 
     # Step 1: enumerate repos
@@ -623,12 +623,13 @@ def main() -> None:
     write_detailed_csv(records, output_dir)
     write_weekly_summary_csv(weekly, output_dir)
     write_weekly_project_csv(weekly_by_project, output_dir)
-    chart_paths = write_all_project_charts(weekly_by_project, chart_dir)
+    # removing the project charts; creating a highlevel chart via other script
+    # chart_paths = write_all_project_charts(weekly_by_project, chart_dir)
 
     print(f"\nDone.")
     print(f"  Deployments: {len(deployments)}  |  Change records: {len(records)}")
     print(f"  CSVs:   {output_dir}/")
-    print(f"  Charts: {len(chart_paths)} PNG(s) in {chart_dir}/")
+    # print(f"  Charts: {len(chart_paths)} PNG(s) in {chart_dir}/")
 
 
 if __name__ == "__main__":

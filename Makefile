@@ -51,13 +51,17 @@ support:
 	python lucille/jira/sup_cycle_time.py --c ~/bin/jira.yaml --o $(2X2_DIR)/support
 	python lucille/jira/sup_ticket_volume.py --c ~/bin/jira.yaml --o $(2X2_DIR)/support
 
-2x2: deployments opsgenie github_security support publish
+2x2: deployments opsgenie github_security support lead_time publish
 
 cost:
 	python lucille/jira/epic_effort_summary.py --days 30 --output-dir ~/Desktop/debris --config ~/bin/jira.yaml
 
 stale_jira:
 	python lucille/jira/stale_tickets_to_csv.py ~/bin/jira_epic_config.yaml
+
+lead_time:
+	python lucille/lead_time_for_changes.py --config ~/bin/jira_epic_config.yaml
+	python lucillle/lead_time_report.py --input ~/Desktop/debris/$(TODAY)_lead_time_changes_detailed.csv --output-dir ~/Desktop/debris/2x2/lead_time
 
 .PHONY: list
 
