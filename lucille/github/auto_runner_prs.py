@@ -407,8 +407,8 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = args.output_dir.expanduser()
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y_%m_%d")
-    csv_path = out_dir / f"auto_runner_prs_{stamp}.csv"
-    png_path = out_dir / f"auto_runner_prs_{stamp}.png"
+    csv_path = out_dir / f"{stamp}_auto_runner_prs.csv"
+    png_path = out_dir / f"{stamp}_auto_runner_prs.png"
 
     write_csv(records, csv_path)
     summary = compute_summary(records)
