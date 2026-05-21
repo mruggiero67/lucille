@@ -85,6 +85,52 @@ def vendor_filename_slug(vendor: str) -> str:
     return s.strip("_") or "vendor"
 
 
+# Vendor -> bar color. Brand-leaning hex values so the same vendor reads the
+# same across charts and console-export variants.
+DEFAULT_VENDOR_COLORS: dict[str, str] = {
+    "aws":        "#205081",  # blue
+    "datadog":    "#632CA6",  # Datadog brand purple
+    "databricks": "#FF3621",  # Databricks brand red
+}
+
+# Fallback for unrecognised vendors. Matplotlib mid-gray; visible without
+# stealing attention from the named-vendor bars.
+FALLBACK_VENDOR_COLOR = "#888888"
+
+# Strip a trailing parenthetical so "AWS" and "AWS (Console export)" share a key.
+_PAREN_SUFFIX_RE = re.compile(r"\s*\([^)]*\)\s*$")
+
+
+def _color_lookup_key(vendor: str) -> str:
+    """Normalise a vendor label for color-map lookup. Pure."""
+    s = _PAREN_SUFFIX_RE.sub("", vendor or "").strip().lower()
+    return s
+
+
+def color_for_vendor(
+    vendor: str,
+    *,
+    overrides: dict[str, str] | None = None,
+    fallback: str = FALLBACK_VENDOR_COLOR,
+) -> str:
+    """
+    Return the bar color for ``vendor``. Pure.
+
+    Lookup order:
+      1. ``overrides`` (caller-supplied, keyed by normalised vendor name)
+      2. ``DEFAULT_VENDOR_COLORS``
+      3. ``fallback``
+    """
+    key = _color_lookup_key(vendor)
+    if overrides:
+        # Normalize override keys the same way so callers can pass
+        # "AWS" / "aws" / "AWS (foo)" interchangeably.
+        norm_overrides = {_color_lookup_key(k): v for k, v in overrides.items()}
+        if key in norm_overrides:
+            return norm_overrides[key]
+    return DEFAULT_VENDOR_COLORS.get(key, fallback)
+
+
 # ---- side-effecting --------------------------------------------------------
 
 def render_chart(
@@ -100,7 +146,8 @@ def render_chart(
         raise ValueError("No data to plot; the CSV produced an empty pivot.")
 
     fig, ax = plt.subplots(figsize=figsize)
-    wide.plot(kind="bar", ax=ax, width=0.8, edgecolor="white")
+    colors = [color_for_vendor(v) for v in wide.columns]
+    wide.plot(kind="bar", ax=ax, width=0.8, edgecolor="white", color=colors)
 
     ax.set_title(
         title
@@ -158,7 +205,13 @@ def render_per_vendor_charts(
         png_path = output_dir / f"{base_stem}_{slug}.png"
 
         fig, ax = plt.subplots(figsize=figsize)
-        bars = ax.bar(week_labels, values, width=0.7, edgecolor="white")
+        bars = ax.bar(
+            week_labels,
+            values,
+            width=0.7,
+            edgecolor="white",
+            color=color_for_vendor(vendor),
+        )
         ax.set_title(
             f"{vendor} — weekly spend ({len(wide)} weeks, as of {date.today().isoformat()})"
         )

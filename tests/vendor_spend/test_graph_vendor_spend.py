@@ -6,8 +6,11 @@ import pandas as pd
 import pytest
 
 from lucille.vendor_spend.graph_vendor_spend import (
+    DEFAULT_VENDOR_COLORS,
+    FALLBACK_VENDOR_COLOR,
     _png_path_for_csv,
     build_dataframe,
+    color_for_vendor,
     pivot_for_plot,
     render_chart,
     render_per_vendor_charts,
@@ -76,6 +79,61 @@ class TestRenderChart:
         empty = pd.DataFrame(columns=["week_start", "vendor", "amount_usd"])
         with pytest.raises(ValueError):
             render_chart(empty, tmp_path / "x.png")
+
+
+class TestColorForVendor:
+    def test_known_vendors_return_default_colors(self):
+        assert color_for_vendor("AWS")        == DEFAULT_VENDOR_COLORS["aws"]
+        assert color_for_vendor("Datadog")    == DEFAULT_VENDOR_COLORS["datadog"]
+        assert color_for_vendor("Databricks") == DEFAULT_VENDOR_COLORS["databricks"]
+
+    def test_case_insensitive(self):
+        assert color_for_vendor("aws") == DEFAULT_VENDOR_COLORS["aws"]
+        assert color_for_vendor("AWS") == DEFAULT_VENDOR_COLORS["aws"]
+        assert color_for_vendor("AwS") == DEFAULT_VENDOR_COLORS["aws"]
+
+    def test_strips_parenthetical_suffix(self):
+        # Comparison-CSV scripts label vendors with "(Console export)";
+        # those should share a color with the live-API variant.
+        assert color_for_vendor("AWS (Console export)") == DEFAULT_VENDOR_COLORS["aws"]
+        assert color_for_vendor("Databricks (Console export)") == DEFAULT_VENDOR_COLORS["databricks"]
+        assert color_for_vendor("Datadog (Console export)") == DEFAULT_VENDOR_COLORS["datadog"]
+
+    def test_strips_arbitrary_parenthetical(self):
+        assert color_for_vendor("AWS (Whatever)") == DEFAULT_VENDOR_COLORS["aws"]
+        assert color_for_vendor("AWS  (with extra space)  ") == DEFAULT_VENDOR_COLORS["aws"]
+
+    def test_unknown_vendor_returns_fallback(self):
+        assert color_for_vendor("GCP") == FALLBACK_VENDOR_COLOR
+        assert color_for_vendor("Snowflake") == FALLBACK_VENDOR_COLOR
+
+    def test_empty_or_none_returns_fallback(self):
+        assert color_for_vendor("") == FALLBACK_VENDOR_COLOR
+        assert color_for_vendor(None) == FALLBACK_VENDOR_COLOR  # type: ignore[arg-type]
+
+    def test_custom_fallback(self):
+        assert color_for_vendor("GCP", fallback="#000000") == "#000000"
+
+    def test_overrides_win_over_defaults(self):
+        out = color_for_vendor("AWS", overrides={"AWS": "#123456"})
+        assert out == "#123456"
+
+    def test_overrides_normalize_keys(self):
+        # Override keys should be matched after the same normalization
+        # (case-insensitive, parenthetical stripped) as the lookup.
+        out = color_for_vendor(
+            "AWS (Console export)", overrides={"aws": "#abcdef"}
+        )
+        assert out == "#abcdef"
+
+    def test_overrides_dont_affect_other_vendors(self):
+        overrides = {"AWS": "#000000"}
+        assert color_for_vendor("Datadog", overrides=overrides) == DEFAULT_VENDOR_COLORS["datadog"]
+
+    def test_default_palette_distinct(self):
+        # Sanity: the three named vendors are all different colors.
+        colors = {DEFAULT_VENDOR_COLORS[k] for k in ("aws", "datadog", "databricks")}
+        assert len(colors) == 3
 
 
 class TestVendorFilenameSlug:

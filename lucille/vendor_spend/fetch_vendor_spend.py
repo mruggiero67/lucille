@@ -205,8 +205,8 @@ def main(argv: list[str] | None = None) -> int:
     week_starts = last_n_week_starts(today, weeks)
     start, end = week_starts[0], week_starts[-1] + timedelta(days=6)
     logger.info(
-        "Fetching %d weeks of spend (%s..%s) for vendors=%s",
-        weeks, start, end, args.vendors,
+        "Today is %s; fetching %d weeks of spend (%s..%s) for vendors=%s",
+        today, weeks, start, end, args.vendors,
     )
 
     daily = collect_daily_rows(cfg, args.vendors, start, end)
