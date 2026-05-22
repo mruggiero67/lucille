@@ -61,7 +61,7 @@ stale_jira:
 
 lead_time:
 	python lucille/lead_time_for_changes.py --config ~/bin/jira_epic_config.yaml
-	python lucille/lead_time_report.py --input ~/Desktop/debris/$(TODAY)_lead_time_changes_detailed.csv --output-dir ~/Desktop/debris/2x2/lead_time
+	python lucille/lead_time_report.py --input ~/Desktop/debris/$(DATE_PREFIX)_lead_time_changes_detailed.csv --output-dir ~/Desktop/debris/2x2/lead_time
 
 .PHONY: list
 
