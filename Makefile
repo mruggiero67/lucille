@@ -58,6 +58,7 @@ cost:
 
 stale_jira:
 	python lucille/jira/stale_tickets_to_csv.py ~/bin/jira_epic_config.yaml
+	# edit CSV and make Jira comments with: python lucille/jira/comment_stale_tickets.py ${PATH_TO_CSV} ~/bin/jira_epic_config.yaml
 
 lead_time:
 	python lucille/lead_time_for_changes.py --config ~/bin/jira_epic_config.yaml
