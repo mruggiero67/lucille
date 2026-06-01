@@ -8,7 +8,7 @@ before creation.
 
 Usage:
     ~/venv/basic-pandas/bin/python lucille/jira/grouped_ticket_generator.py \\
-        --job lucille/jira/jobs/pci_user_role_review.yaml [--dry-run]
+        --job ~/bin/pci_user_role_review.yaml [--dry-run]
 """
 
 import argparse
@@ -28,6 +28,7 @@ try:
         compute_derived_variables,
         load_credentials,
         resolve,
+        resolve_job_path,
         text_to_adf,
         lookup_account_id,
         create_issue,
@@ -39,6 +40,7 @@ except ImportError:
         compute_derived_variables,
         load_credentials,
         resolve,
+        resolve_job_path,
         text_to_adf,
         lookup_account_id,
         create_issue,
@@ -86,6 +88,82 @@ def load_and_group(csv_path: str, group_by_col: str) -> pd.core.groupby.DataFram
 
 def load_template_body(path: str) -> str:
     return Path(path).expanduser().read_text(encoding="utf-8").strip()
+
+
+def print_dry_run_report(
+    grouped: pd.core.groupby.DataFrameGroupBy,
+    job: dict,
+) -> None:
+    """Print a console summary of what would be produced on a dry run.
+
+    Shows two things the user asked for:
+      1. How many CSV rows landed in each ticket's table (one row per ticket
+         in the run, sorted by row-count descending).
+      2. How many tickets would be assigned to each user. ``group_by`` is
+         usually the assignee column itself, in which case every user gets
+         exactly one ticket; we still print this so the relationship is
+         visible at a glance.
+    """
+    group_by_col = job["group_by"]
+    assignee_col = job["jira"].get("assignee_column") or group_by_col
+
+    # (group_key, row_count, assignee_value_for_that_group)
+    per_group: list[tuple[str, int, str]] = []
+    for group_key, group_df in grouped:
+        rows = len(group_df)
+        # Assignee for the ticket: if the assignee column differs from the
+        # group_by column, use the first non-null value within the group.
+        if assignee_col == group_by_col:
+            assignee = str(group_key)
+        else:
+            non_null = group_df[assignee_col].dropna() if assignee_col in group_df.columns else []
+            assignee = str(non_null.iloc[0]) if len(non_null) else "<missing>"
+        per_group.append((str(group_key), rows, assignee))
+
+    total_rows = sum(rows for _, rows, _ in per_group)
+    total_tickets = len(per_group)
+
+    # Tickets per assignee
+    tickets_per_assignee: dict[str, int] = {}
+    rows_per_assignee: dict[str, int] = {}
+    for _, rows, assignee in per_group:
+        tickets_per_assignee[assignee] = tickets_per_assignee.get(assignee, 0) + 1
+        rows_per_assignee[assignee] = rows_per_assignee.get(assignee, 0) + rows
+
+    print()
+    print("=" * 72)
+    print("DRY RUN REPORT")
+    print("=" * 72)
+    print(f"CSV:        {job['csv']}")
+    print(f"group_by:   {group_by_col}")
+    print(f"assignee:   {assignee_col}"
+          f"{' (same as group_by)' if assignee_col == group_by_col else ''}")
+    print(f"Totals:     {total_tickets} tickets across {total_rows} CSV rows "
+          f"({total_rows / total_tickets:.1f} rows/ticket on average)")
+
+    # Section 1: rows per ticket
+    print()
+    print(f"Rows per ticket (descending) \u2014 {total_tickets} ticket(s):")
+    key_width = max((len(k) for k, _, _ in per_group), default=10)
+    key_width = min(max(key_width, 10), 60)
+    print(f"  {'group_by value'.ljust(key_width)}  {'rows':>6}")
+    print(f"  {'-' * key_width}  {'-' * 6}")
+    for key, rows, _ in sorted(per_group, key=lambda t: (-t[1], t[0])):
+        print(f"  {key[:key_width].ljust(key_width)}  {rows:>6}")
+    print(f"  {'-' * key_width}  {'-' * 6}")
+    print(f"  {'TOTAL'.ljust(key_width)}  {total_rows:>6}")
+
+    # Section 2: tickets per assignee
+    print()
+    print(f"Tickets per assignee \u2014 {len(tickets_per_assignee)} unique assignee(s):")
+    a_width = max((len(a) for a in tickets_per_assignee), default=10)
+    a_width = min(max(a_width, 10), 60)
+    print(f"  {'assignee'.ljust(a_width)}  {'tickets':>7}  {'rows':>6}")
+    print(f"  {'-' * a_width}  {'-' * 7}  {'-' * 6}")
+    for assignee, n in sorted(tickets_per_assignee.items(), key=lambda kv: (-kv[1], kv[0])):
+        print(f"  {assignee[:a_width].ljust(a_width)}  {n:>7}  {rows_per_assignee[assignee]:>6}")
+    print("=" * 72)
+    print()
 
 
 # ---------------------------------------------------------------------------
@@ -141,6 +219,41 @@ def build_role_table_adf(
 # ADF description assembly
 # ---------------------------------------------------------------------------
 
+def _group_template_vars(
+    ctx: dict,
+    group_df: pd.DataFrame,
+    group_key: str,
+    group_by_col: str,
+) -> dict:
+    """Build the dict of {placeholder} values available to a group's templates.
+
+    Merges (in this precedence order, later wins):
+      * ``ctx`` — derived variables (quarter, year, …)
+      * the group's first CSV row — so any column that is constant within the
+        group becomes available as ``{col_name}``. Columns that vary inside
+        the group will resolve to whatever value sits in the first row, so
+        only constant-within-group columns are safe to reference in summary,
+        labels, or one-off template fields.
+      * an explicit alias for the ``group_by`` column — belt-and-braces, in
+        case the column is somehow missing from the first row.
+      * the legacy ``"supervisor"`` alias — back-compat with templates that
+        hard-code ``{supervisor}`` (e.g. ``pci_user_role_review.yaml``).
+
+    NaN values are coerced to empty strings so they don't render as ``nan``.
+    """
+    first_row = group_df.iloc[0]
+    first_row_vars = {
+        col: ("" if pd.isna(first_row[col]) else str(first_row[col]))
+        for col in group_df.columns
+    }
+    return {
+        **ctx,
+        **first_row_vars,
+        group_by_col: group_key,
+        "supervisor": group_key,
+    }
+
+
 def build_adf_description(
     template_body: str,
     group_df: pd.DataFrame,
@@ -155,7 +268,7 @@ def build_adf_description(
     3. Convert surrounding text blocks to ADF content.
     4. Inject the ADF role table between them.
     """
-    vars_ = {**ctx, "supervisor": supervisor_email}
+    vars_ = _group_template_vars(ctx, group_df, supervisor_email, job["group_by"])
     resolved = resolve(template_body, vars_, {}, strict=False)
 
     if "{ROLE_TABLE}" not in resolved:
@@ -192,16 +305,19 @@ def check_duplicate(
     session: requests.Session,
     base_url: str,
     project: str,
+    summary_match: str = "PCI User Role Review",
 ) -> Optional[str]:
     """Return an existing open ticket key if one already exists, else None.
 
-    Searches for open tickets in `project` whose summary contains both the
-    review phrase and the supervisor email. Skips creation if found, to prevent
-    duplicates on re-runs.
+    Searches for open tickets in `project` whose summary contains both
+    ``summary_match`` and the group-key value. Skips creation if found, to
+    prevent duplicates on re-runs. ``summary_match`` defaults to the legacy
+    PCI-user-role-review phrase for back-compat; override per job via the
+    YAML key ``dedup_summary_match``.
     """
     jql = (
         f'project = {project} '
-        f'AND summary ~ "PCI User Role Review" '
+        f'AND summary ~ "{summary_match}" '
         f'AND summary ~ "{supervisor}" '
         f'AND status != Done'
     )
@@ -228,9 +344,17 @@ def build_payload(
     ctx: dict,
     adf_body: dict,
     account_id: Optional[str],
+    group_df: Optional[pd.DataFrame] = None,
 ) -> dict:
     jira_cfg = job["jira"]
-    vars_ = {**ctx, "supervisor": supervisor_email}
+    # ``supervisor_email`` is the current group key value (the parameter name
+    # is historical). When the caller passes the group's DataFrame we can
+    # surface its columns as {placeholders} the same way build_adf_description
+    # does; otherwise fall back to the legacy ctx + supervisor-alias dict.
+    if group_df is not None:
+        vars_ = _group_template_vars(ctx, group_df, supervisor_email, job["group_by"])
+    else:
+        vars_ = {**ctx, "supervisor": supervisor_email}
 
     fields: dict = {
         "project":     {"key": jira_cfg["project"]},
@@ -268,7 +392,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Create one Jira ticket per group from a CSV, with an ADF table of group rows."
     )
-    parser.add_argument("--job", required=True, help="Path to job config YAML")
+    parser.add_argument(
+        "--job",
+        required=True,
+        help="Job config YAML. Accepts either a full path "
+             "(e.g. ~/bin/quarterly_service_role_review.yaml) or a bare "
+             "name (e.g. quarterly_service_role_review), which resolves to "
+             "~/bin/<name>.yaml.",
+    )
     parser.add_argument(
         "--credentials",
         default=str(Path("~/bin/jira_epic_config.yaml").expanduser()),
@@ -279,7 +410,8 @@ def main() -> None:
     args = parser.parse_args()
 
     creds = load_credentials(args.credentials)
-    job = load_job(args.job)
+    job_path = resolve_job_path(args.job)
+    job = load_job(str(job_path))
     dry_run = args.dry_run or job.get("dry_run", False)
     output_csv = args.output_csv or job.get("output_csv")
 
@@ -313,7 +445,8 @@ def main() -> None:
         # Dedup check
         if not dry_run:
             existing_key = check_duplicate(
-                supervisor_email, ctx, session, creds["base_url"], job["jira"]["project"]
+                supervisor_email, ctx, session, creds["base_url"], job["jira"]["project"],
+                summary_match=job.get("dedup_summary_match", "PCI User Role Review"),
             )
             if existing_key:
                 logger.info(f"Skipping {label} — open ticket already exists: {existing_key}")
@@ -333,7 +466,13 @@ def main() -> None:
         status = "created"
 
         if assignee_col:
-            email = supervisor_email  # group_by col is the assignee col
+            # If assignee_col == group_by, the group key IS the email.
+            # Otherwise look up the value in the group (it's expected to be
+            # constant within the group; we take the first row's value).
+            if assignee_col == job["group_by"]:
+                email = supervisor_email
+            else:
+                email = str(group_df[assignee_col].iloc[0])
             if dry_run:
                 account_id = f"<accountId:{email}>"
             else:
@@ -341,7 +480,7 @@ def main() -> None:
             if not account_id and not dry_run:
                 status = "created_no_assignee"
 
-        payload = build_payload(job, supervisor_email, ctx, adf_body, account_id)
+        payload = build_payload(job, supervisor_email, ctx, adf_body, account_id, group_df=group_df)
         result = create_issue(payload, session, creds["base_url"], dry_run)
 
         jira_key = result.get("key")
@@ -382,6 +521,11 @@ def main() -> None:
         logger.info(f"Results written to {out_path}")
     else:
         print(results_df.to_string())
+
+    # Print the dry-run report at the very end so it stays visible after
+    # all the per-group JSON payload dumps have scrolled past.
+    if dry_run:
+        print_dry_run_report(grouped, job)
 
 
 if __name__ == "__main__":

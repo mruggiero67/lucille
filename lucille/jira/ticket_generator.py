@@ -8,11 +8,11 @@ a set of built-in derived variables (quarter, year, quarter_end_date, etc.).
 
 Usage:
     ~/venv/basic-pandas/bin/python -m lucille.jira.ticket_generator \\
-        --job lucille/jira/jobs/pci_access_review.yaml [--dry-run]
+        --job ~/bin/pci_access_review.yaml [--dry-run]
 
     # or directly:
     ~/venv/basic-pandas/bin/python lucille/jira/ticket_generator.py \\
-        --job lucille/jira/jobs/pci_access_review.yaml [--dry-run]
+        --job ~/bin/pci_access_review.yaml [--dry-run]
 """
 
 import argparse
@@ -33,6 +33,7 @@ try:
         load_credentials,
         _LenientMap,
         resolve,
+        resolve_job_path,
         text_to_adf,
         lookup_account_id,
         create_issue,
@@ -45,6 +46,7 @@ except ImportError:
         load_credentials,
         _LenientMap,
         resolve,
+        resolve_job_path,
         text_to_adf,
         lookup_account_id,
         create_issue,
@@ -173,7 +175,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Create Jira tickets from a CSV + template, driven by a job config YAML."
     )
-    parser.add_argument("--job", required=True, help="Path to job config YAML")
+    parser.add_argument(
+        "--job",
+        required=True,
+        help="Job config YAML. Accepts either a full path "
+             "(e.g. ~/bin/pci_access_review.yaml) or a bare name "
+             "(e.g. pci_access_review), which resolves to ~/bin/<name>.yaml.",
+    )
     parser.add_argument(
         "--credentials",
         default=str(Path("~/bin/jira_epic_config.yaml").expanduser()),
@@ -184,7 +192,8 @@ def main() -> None:
     args = parser.parse_args()
 
     creds = load_credentials(args.credentials)
-    job = load_job(args.job)
+    job_path = resolve_job_path(args.job)
+    job = load_job(str(job_path))
     dry_run = args.dry_run or job.get("dry_run", False)
     output_csv = args.output_csv or job.get("output_csv")
 

@@ -51,6 +51,46 @@ def compute_derived_variables(requested: list, run_date: date) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Job config path resolution
+# ---------------------------------------------------------------------------
+
+DEFAULT_JOB_CONFIG_DIR = Path("~/bin").expanduser()
+
+
+def resolve_job_path(spec: str, search_dir: Path = DEFAULT_JOB_CONFIG_DIR) -> Path:
+    """Resolve a ``--job`` argument to a concrete YAML path.
+
+    Resolution rules (first match wins):
+
+    1. If ``spec`` contains a path separator, starts with ``~`` or ``.``, or
+       already ends in ``.yaml`` / ``.yml``, it is treated as a path.
+       Returns it after ``expanduser``. No existence check here — the caller's
+       ``open()`` will produce the standard FileNotFoundError if missing.
+    2. Otherwise ``spec`` is a *bare name*. Try ``{search_dir}/{spec}.yaml``
+       and ``{search_dir}/{spec}.yml`` in that order and return the first that
+       exists. If neither exists, raise FileNotFoundError listing the paths
+       that were attempted.
+    """
+    looks_like_path = (
+        "/" in spec
+        or "\\" in spec
+        or spec.startswith(("~", "."))
+        or spec.endswith((".yaml", ".yml"))
+    )
+    if looks_like_path:
+        return Path(spec).expanduser()
+
+    candidates = [search_dir / f"{spec}.yaml", search_dir / f"{spec}.yml"]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    raise FileNotFoundError(
+        f"Bare job name {spec!r} did not resolve to an existing file. Tried: "
+        + ", ".join(str(c) for c in candidates)
+    )
+
+
+# ---------------------------------------------------------------------------
 # Credentials
 # ---------------------------------------------------------------------------
 
