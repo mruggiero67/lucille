@@ -64,6 +64,13 @@ lead_time:
 	python lucille/lead_time_for_changes.py --config ~/bin/jira_epic_config.yaml
 	python lucille/lead_time_report.py --input ~/Desktop/debris/$(DATE_PREFIX)_lead_time_changes_detailed.csv --output-dir ~/Desktop/debris/2x2/lead_time
 
+mv_datadog:
+	mv "$$(find ~/Downloads -name "*$$(date +%Y-%m-%d).csv" -maxdepth 1)" ~/Desktop/debris/$$(date +%Y_%m_%d)_datadog_spend.csv
+
+datadog_spend:
+	python -m lucille.vendor_spend.datadog_trends_csv --csv ~/Desktop/debris/$(DATE_PREFIX)_datadog_spend.csv
+
+
 .PHONY: list
 
 list:
