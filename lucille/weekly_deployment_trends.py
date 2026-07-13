@@ -21,8 +21,7 @@ import yaml
 
 # Configure logging at module level
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -40,12 +39,14 @@ def load_config(config_path: Path) -> dict:
         Dictionary containing configuration parameters
     """
     if config_path and config_path.exists():
-        with open(config_path, 'r') as f:
+        with open(config_path, "r") as f:
             return yaml.safe_load(f)
     return {}
 
 
-def calculate_weekly_deployments(df: pd.DataFrame, date_column: str = 'date') -> pd.DataFrame:
+def calculate_weekly_deployments(
+    df: pd.DataFrame, date_column: str = "date"
+) -> pd.DataFrame:
     """
     Calculate deployments per week from daily deployment data.
 
@@ -60,19 +61,23 @@ def calculate_weekly_deployments(df: pd.DataFrame, date_column: str = 'date') ->
     """
     # Convert date column to datetime
     df = df.copy()
-    df['date_parsed'] = pd.to_datetime(df[date_column])
+    df["date_parsed"] = pd.to_datetime(df[date_column])
 
     # Extract week start date (Monday of each week)
-    df['week_start'] = df['date_parsed'] - pd.to_timedelta(df['date_parsed'].dt.dayofweek, unit='d')
+    df["week_start"] = df["date_parsed"] - pd.to_timedelta(
+        df["date_parsed"].dt.dayofweek, unit="d"
+    )
 
     # Group by week and count deployments
-    weekly_counts = df.groupby('week_start').size().reset_index(name='deployment_count')
-    weekly_counts = weekly_counts.sort_values('week_start')
+    weekly_counts = df.groupby("week_start").size().reset_index(name="deployment_count")
+    weekly_counts = weekly_counts.sort_values("week_start")
 
     return weekly_counts
 
 
-def calculate_trend_line(weekly_data: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, float]:
+def calculate_trend_line(
+    weekly_data: pd.DataFrame,
+) -> Tuple[np.ndarray, np.ndarray, float]:
     """
     Calculate linear trend line for weekly deployment data.
 
@@ -85,8 +90,8 @@ def calculate_trend_line(weekly_data: pd.DataFrame) -> Tuple[np.ndarray, np.ndar
         Tuple of (x_values, y_values, slope) for the trend line
     """
     # Convert dates to numeric values (days since first week)
-    x = (weekly_data['week_start'] - weekly_data['week_start'].min()).dt.days.values
-    y = weekly_data['deployment_count'].values
+    x = (weekly_data["week_start"] - weekly_data["week_start"].min()).dt.days.values
+    y = weekly_data["deployment_count"].values
 
     # Calculate linear regression
     coefficients = np.polyfit(x, y, 1)
@@ -96,7 +101,10 @@ def calculate_trend_line(weekly_data: pd.DataFrame) -> Tuple[np.ndarray, np.ndar
     return x, trend_line(x), slope
 
 
-def calculate_statistics(weekly_data: pd.DataFrame) -> dict:
+def calculate_statistics(
+    weekly_data: pd.DataFrame,
+    recent_weeks: int = 8,
+) -> dict:
     """
     Calculate summary statistics for weekly deployment data.
 
@@ -104,21 +112,65 @@ def calculate_statistics(weekly_data: pd.DataFrame) -> dict:
 
     Args:
         weekly_data: DataFrame with week_start and deployment_count columns
+        recent_weeks: How many trailing weeks to compute a separate "recent"
+            stats block over. Set to 0 to disable. Defaults to 8.
 
     Returns:
-        Dictionary containing various statistics
+        Dictionary containing various statistics. When ``recent_weeks`` is
+        positive and there are at least that many weeks in ``weekly_data``,
+        the dictionary also includes a ``recent`` sub-dictionary with the
+        same shape (computed over the last ``recent_weeks`` rows) plus
+        ``peak_rolling_mean`` / ``peak_rolling_window_end`` describing the
+        all-time-best ``recent_weeks``-wide rolling window.
     """
     stats = {
-        'total_weeks': len(weekly_data),
-        'total_deployments': weekly_data['deployment_count'].sum(),
-        'average_per_week': weekly_data['deployment_count'].mean(),
-        'median_per_week': weekly_data['deployment_count'].median(),
-        'max_week': weekly_data['deployment_count'].max(),
-        'min_week': weekly_data['deployment_count'].min(),
-        'std_dev': weekly_data['deployment_count'].std(),
-        'first_week': weekly_data['week_start'].min(),
-        'last_week': weekly_data['week_start'].max(),
+        "total_weeks": len(weekly_data),
+        "total_deployments": weekly_data["deployment_count"].sum(),
+        "average_per_week": weekly_data["deployment_count"].mean(),
+        "median_per_week": weekly_data["deployment_count"].median(),
+        "max_week": weekly_data["deployment_count"].max(),
+        "min_week": weekly_data["deployment_count"].min(),
+        "std_dev": weekly_data["deployment_count"].std(),
+        "first_week": weekly_data["week_start"].min(),
+        "last_week": weekly_data["week_start"].max(),
     }
+
+    # Trailing-window stats. Only emitted when we have enough data to make
+    # the comparison meaningful (>= recent_weeks rows).
+    if recent_weeks and len(weekly_data) >= recent_weeks:
+        sorted_data = weekly_data.sort_values("week_start")
+        tail = sorted_data.tail(recent_weeks)
+        counts = sorted_data["deployment_count"]
+
+        # All-time best rolling window of the same width, for context.
+        rolling = counts.rolling(recent_weeks).mean()
+        peak_idx = rolling.idxmax() if rolling.notna().any() else None
+        if peak_idx is not None:
+            peak_window_end = sorted_data.loc[peak_idx, "week_start"]
+            peak_value = float(rolling.loc[peak_idx])
+        else:
+            peak_window_end = None
+            peak_value = float("nan")
+
+        recent_avg = float(tail["deployment_count"].mean())
+        all_time_avg = float(stats["average_per_week"])
+        stats["recent"] = {
+            "weeks": recent_weeks,
+            "first_week": tail["week_start"].min(),
+            "last_week": tail["week_start"].max(),
+            "total_deployments": int(tail["deployment_count"].sum()),
+            "average_per_week": recent_avg,
+            "median_per_week": float(tail["deployment_count"].median()),
+            "max_week": int(tail["deployment_count"].max()),
+            "min_week": int(tail["deployment_count"].min()),
+            "vs_all_time_delta": recent_avg - all_time_avg,
+            "vs_all_time_pct": (
+                ((recent_avg / all_time_avg) - 1) * 100 if all_time_avg else 0.0
+            ),
+            "peak_rolling_mean": peak_value,
+            "peak_rolling_window_end": peak_window_end,
+            "is_new_peak": peak_value == 0 or recent_avg >= peak_value - 1e-9,
+        }
 
     return stats
 
@@ -127,7 +179,7 @@ def create_weekly_trend_graph(
     weekly_data: pd.DataFrame,
     output_path: Path,
     title: str = "Weekly Deployment Trends",
-    figsize: Tuple[int, int] = (14, 8)
+    figsize: Tuple[int, int] = (14, 8),
 ) -> None:
     """
     Create and save a graph showing weekly deployment trends.
@@ -146,41 +198,56 @@ def create_weekly_trend_graph(
     fig, ax = plt.subplots(figsize=figsize)
 
     # Plot weekly deployment bars
-    weeks = weekly_data['week_start']
-    counts = weekly_data['deployment_count']
+    weeks = weekly_data["week_start"]
+    counts = weekly_data["deployment_count"]
 
-    bars = ax.bar(weeks, counts, width=6, color='steelblue', alpha=0.7, label='Weekly Deployments')
+    bars = ax.bar(
+        weeks, counts, width=6, color="steelblue", alpha=0.7, label="Weekly Deployments"
+    )
 
     # Calculate and plot trend line
     x_numeric, trend_y, slope = calculate_trend_line(weekly_data)
 
     # Convert x_numeric back to dates for plotting
-    trend_dates = weekly_data['week_start'].min() + pd.to_timedelta(x_numeric, unit='d')
-    ax.plot(trend_dates, trend_y, 'r--', linewidth=2, label=f'Trend (slope: {slope:.2f} deployments/week)')
+    trend_dates = weekly_data["week_start"].min() + pd.to_timedelta(x_numeric, unit="d")
+    ax.plot(
+        trend_dates,
+        trend_y,
+        "r--",
+        linewidth=2,
+        label=f"Trend (slope: {slope:.2f} deployments/week)",
+    )
 
     # Customize the plot
-    ax.set_xlabel('Week Starting', fontsize=12, fontweight='bold')
-    ax.set_ylabel('Number of Deployments', fontsize=12, fontweight='bold')
-    ax.set_title(title, fontsize=14, fontweight='bold', pad=20)
+    ax.set_xlabel("Week Starting", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Number of Deployments", fontsize=12, fontweight="bold")
+    ax.set_title(title, fontsize=14, fontweight="bold", pad=20)
 
     # Format x-axis
-    ax.tick_params(axis='x', rotation=45)
+    ax.tick_params(axis="x", rotation=45)
 
     # Add grid for readability
-    ax.grid(axis='y', alpha=0.3, linestyle='--')
+    ax.grid(axis="y", alpha=0.3, linestyle="--")
 
     # Add legend
-    ax.legend(loc='upper left', fontsize=10)
+    ax.legend(loc="upper left", fontsize=10)
 
     # Add average line
     avg = counts.mean()
-    ax.axhline(y=avg, color='green', linestyle=':', linewidth=2, alpha=0.5, label=f'Average: {avg:.1f}')
+    ax.axhline(
+        y=avg,
+        color="green",
+        linestyle=":",
+        linewidth=2,
+        alpha=0.5,
+        label=f"Average: {avg:.1f}",
+    )
 
     # Adjust layout to prevent label cutoff
     plt.tight_layout()
 
     # Save the figure
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
     logger.info(f"Graph saved successfully to {output_path}")
 
     # Close the figure to free memory
@@ -188,9 +255,7 @@ def create_weekly_trend_graph(
 
 
 def create_summary_report(
-    weekly_data: pd.DataFrame,
-    statistics: dict,
-    output_path: Path
+    weekly_data: pd.DataFrame, statistics: dict, output_path: Path
 ) -> None:
     """
     Create a text summary report of weekly deployment trends.
@@ -203,10 +268,41 @@ def create_summary_report(
         output_path: Path where the summary text file should be saved
     """
     logger.info(f"Creating summary report: {output_path}")
-    with open(output_path, 'w') as f:
-        f.write(f"Date Range: week starting {statistics['first_week'].strftime('%Y-%m-%d')} to week starting "
-                f"{statistics['last_week'].strftime('%Y-%m-%d')}\n")
-        f.write(f"Average Deployments per Week: {statistics['average_per_week']:.2f}\n")
+    with open(output_path, "w") as f:
+        f.write(
+            f"Date Range: week starting {statistics['first_week'].strftime('%Y-%m-%d')} "
+            f"to week starting {statistics['last_week'].strftime('%Y-%m-%d')}\n"
+        )
+        f.write(
+            f"Weeks Analyzed: {statistics['total_weeks']}  |  "
+            f"Total Deployments: {statistics['total_deployments']}\n"
+        )
+        f.write(
+            f"Average Deployments per Week (all-time): {statistics['average_per_week']:.2f}\n"
+        )
+
+        recent = statistics.get("recent")
+        if recent:
+            f.write("\n")
+            f.write(f"--- Last {recent['weeks']} weeks ---\n")
+            f.write(
+                f"Window: {recent['first_week'].strftime('%Y-%m-%d')} "
+                f"to {recent['last_week'].strftime('%Y-%m-%d')}\n"
+            )
+            f.write(f"Total Deployments: {recent['total_deployments']}\n")
+            f.write(f"Average Deployments per Week: {recent['average_per_week']:.2f}\n")
+            f.write(f"Median Deployments per Week:  {recent['median_per_week']:.1f}\n")
+            f.write(
+                f"vs. all-time average: {recent['vs_all_time_delta']:+.2f}/week "
+                f"({recent['vs_all_time_pct']:+.1f}%)\n"
+            )
+            if recent["peak_rolling_window_end"] is not None:
+                tag = " ← NEW PEAK" if recent["is_new_peak"] else ""
+                f.write(
+                    f"Best {recent['weeks']}-week rolling mean ever: "
+                    f"{recent['peak_rolling_mean']:.2f}/week "
+                    f"(window ending {recent['peak_rolling_window_end'].strftime('%Y-%m-%d')}){tag}\n"
+                )
     logger.info(f"Summary report saved to {output_path}")
 
 
@@ -215,29 +311,33 @@ def main():
     Main entry point for the weekly deployment trends analyzer.
     """
     parser = argparse.ArgumentParser(
-        description='Analyze weekly deployment trends from CSV data'
+        description="Analyze weekly deployment trends from CSV data"
     )
     parser.add_argument(
-        '--csv',
+        "--csv",
         type=Path,
         required=True,
-        help='Path to the deployment analysis CSV file'
+        help="Path to the deployment analysis CSV file",
     )
     parser.add_argument(
-        '--output-dir',
+        "--output-dir",
         type=Path,
-        default=Path.home() / 'Desktop' / 'debris',
-        help='Directory where output files will be saved (default: ~/Desktop/debris)'
+        default=Path.home() / "Desktop" / "debris",
+        help="Directory where output files will be saved (default: ~/Desktop/debris)",
     )
     parser.add_argument(
-        '--config',
-        type=Path,
-        help='Path to YAML configuration file (optional)'
+        "--config", type=Path, help="Path to YAML configuration file (optional)"
     )
     parser.add_argument(
-        '--verbose',
-        action='store_true',
-        help='Enable verbose logging output'
+        "--recent-weeks",
+        type=int,
+        default=8,
+        metavar="N",
+        help="Trailing window (in weeks) for the 'recent' summary block. "
+        "Set to 0 to omit. Default: 8.",
+    )
+    parser.add_argument(
+        "--verbose", action="store_true", help="Enable verbose logging output"
     )
 
     args = parser.parse_args()
@@ -265,16 +365,16 @@ def main():
     logger.info(f"Loaded {len(df)} deployment records")
 
     # Calculate weekly deployments
-    weekly_data = calculate_weekly_deployments(df, date_column='date')
+    weekly_data = calculate_weekly_deployments(df, date_column="date")
     logger.info(f"Calculated weekly data for {len(weekly_data)} weeks")
 
     # Calculate statistics
-    statistics = calculate_statistics(weekly_data)
+    statistics = calculate_statistics(weekly_data, recent_weeks=args.recent_weeks)
 
     # Generate outputs
     timestamp = datetime.now().strftime("%Y_%m_%d")
-    graph_path = args.output_dir / f'{timestamp}_weekly_deployment_trends.png'
-    summary_path = args.output_dir / f'{timestamp}_weekly_deployment_summary.txt'
+    graph_path = args.output_dir / f"{timestamp}_weekly_deployment_trends.png"
+    summary_path = args.output_dir / f"{timestamp}_weekly_deployment_summary.txt"
 
     create_weekly_trend_graph(weekly_data, graph_path)
     create_summary_report(weekly_data, statistics, summary_path)
@@ -284,14 +384,26 @@ def main():
     logger.info("ANALYSIS COMPLETE")
     logger.info("=" * 50)
     logger.info(f"Total Weeks Analyzed: {statistics['total_weeks']}")
-    logger.info(f"Average Deployments/Week: {statistics['average_per_week']:.2f}")
-    logger.info(f"Date Range: {statistics['first_week'].strftime('%Y-%m-%d')} to "
-                f"{statistics['last_week'].strftime('%Y-%m-%d')}")
+    logger.info(
+        f"Average Deployments/Week (all-time): {statistics['average_per_week']:.2f}"
+    )
+    logger.info(
+        f"Date Range: {statistics['first_week'].strftime('%Y-%m-%d')} to "
+        f"{statistics['last_week'].strftime('%Y-%m-%d')}"
+    )
+    recent = statistics.get("recent")
+    if recent:
+        peak_tag = " (NEW PEAK)" if recent["is_new_peak"] else ""
+        logger.info(
+            f"Last {recent['weeks']} weeks: avg {recent['average_per_week']:.2f}/week "
+            f"({recent['vs_all_time_pct']:+.1f}% vs all-time); "
+            f"peak rolling-{recent['weeks']} mean was {recent['peak_rolling_mean']:.2f}{peak_tag}"
+        )
     logger.info(f"\nGraph saved to: {graph_path}")
     logger.info(f"Summary saved to: {summary_path}")
 
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     exit(main())

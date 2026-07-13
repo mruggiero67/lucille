@@ -239,7 +239,8 @@ def write_csv(rows: List[Dict], path: Path) -> None:
 
 
 def write_graph_and_summary(
-    rows: List[Dict], graph_output_dir: Path, since: datetime
+    rows: List[Dict], graph_output_dir: Path, since: datetime,
+    recent_weeks: int = 8,
 ) -> None:
     """
     Produce a weekly deployment bar graph (PNG) and ASCII summary (TXT),
@@ -250,7 +251,7 @@ def write_graph_and_summary(
     graph_output_dir.mkdir(parents=True, exist_ok=True)
     df = pd.DataFrame(rows)
     weekly = calculate_weekly_deployments(df, date_column="date")
-    stats = calculate_statistics(weekly)
+    stats = calculate_statistics(weekly, recent_weeks=recent_weeks)
 
     timestamp = datetime.now().strftime("%Y_%m_%d")
     since_label = since.strftime("%Y-%m-%d")
@@ -262,13 +263,24 @@ def write_graph_and_summary(
     summary_path = graph_output_dir / f"{timestamp}_github_deploy_history_summary.txt"
     create_summary_report(weekly, stats, summary_path)
 
-    logger.info(
-        f"Graph:   {graph_path}\n"
-        f"Summary: {summary_path}\n"
+    log_lines = [
+        f"Graph:   {graph_path}",
+        f"Summary: {summary_path}",
         f"  Weeks: {stats['total_weeks']}  |  "
         f"Total: {stats['total_deployments']}  |  "
-        f"Avg/week: {stats['average_per_week']:.1f}"
-    )
+        f"Avg/week (all-time): {stats['average_per_week']:.1f}",
+    ]
+    recent = stats.get('recent')
+    if recent:
+        peak_tag = " ← NEW PEAK" if recent['is_new_peak'] else ""
+        log_lines.append(
+            f"  Last {recent['weeks']}w: "
+            f"avg {recent['average_per_week']:.1f}/week "
+            f"({recent['vs_all_time_pct']:+.1f}% vs all-time), "
+            f"peak rolling-{recent['weeks']} mean "
+            f"{recent['peak_rolling_mean']:.1f}{peak_tag}"
+        )
+    logger.info("\n".join(log_lines))
 
 
 def print_table(rows: List[Dict]) -> None:
@@ -336,6 +348,14 @@ def parse_args() -> argparse.Namespace:
         help=f"Path to jira_epic_config.yaml (default: {DEFAULT_JIRA_EPIC_CONFIG})",
     )
     p.add_argument(
+        "--recent-weeks",
+        type=int,
+        default=8,
+        metavar="N",
+        help="Trailing window (in weeks) for the 'recent' summary block. "
+             "Set to 0 to omit. Default: 8.",
+    )
+    p.add_argument(
         "--no-cache",
         action="store_true",
         help="Bypass local cache; always re-fetch from GitHub",
@@ -392,7 +412,7 @@ def main() -> None:
 
     csv_path = output_dir / f"{timestamp}_github_deploy_history.csv"
     write_csv(rows, csv_path)
-    write_graph_and_summary(rows, graph_output_dir, since)
+    write_graph_and_summary(rows, graph_output_dir, since, recent_weeks=args.recent_weeks)
 
     print(f"\nDone. {len(rows)} releases from {len(repos)} repos since {args.since}.")
     print(f"CSV:   {csv_path}")
