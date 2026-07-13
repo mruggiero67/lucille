@@ -3,4 +3,6 @@
 .coverage
 .idea/
 __pycache__/
-
+htmlcov/
+.venv/
+.pytest_cache/
