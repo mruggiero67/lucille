@@ -16,33 +16,20 @@ Usage:
 """
 import argparse
 import logging
-import sys
 from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 
-try:
-    from lucille.lead_time.aggregations import (
-        compute_repo_stats,
-        compute_weekly_stats,
-        filter_valid_records,
-    )
-    from lucille.lead_time.visualizations import (
-        render_distribution_chart,
-        render_trends_chart,
-    )
-except ImportError:
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-    from lucille.lead_time.aggregations import (
-        compute_repo_stats,
-        compute_weekly_stats,
-        filter_valid_records,
-    )
-    from lucille.lead_time.visualizations import (
-        render_distribution_chart,
-        render_trends_chart,
-    )
+from lucille.lead_time.aggregations import (
+    compute_repo_stats,
+    compute_weekly_stats,
+    filter_valid_records,
+)
+from lucille.lead_time.visualizations import (
+    render_distribution_chart,
+    render_trends_chart,
+)
 
 logging.basicConfig(
     format="%(levelname)-8s %(asctime)s %(filename)s:%(lineno)d %(message)s",

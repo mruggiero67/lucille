@@ -7,18 +7,12 @@ from typing import List, Dict, Optional
 import time
 from dateutil import parser as date_parser
 import os
-import sys
 import logging
 import argparse
 import yaml
 import traceback
-from pathlib import Path
 
-try:
-    from lucille.github.github_utils import fetch_org_repos
-except ImportError:
-    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from lucille.github.github_utils import fetch_org_repos
+from lucille.github.github_utils import fetch_org_repos
 
 # Configure logging
 logging.basicConfig(

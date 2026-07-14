@@ -18,7 +18,6 @@ Usage:
 import argparse
 import logging
 import re
-import sys
 from datetime import date
 from pathlib import Path
 from typing import Optional
@@ -27,31 +26,17 @@ import pandas as pd
 import yaml
 
 # Handle both direct script execution and module import
-try:
-    from .ticket_utils import (
-        compute_derived_variables,
-        load_credentials,
-        _LenientMap,
-        resolve,
-        resolve_job_path,
-        text_to_adf,
-        lookup_account_id,
-        create_issue,
-    )
-    from .utils import create_jira_session
-except ImportError:
-    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from lucille.jira.ticket_utils import (
-        compute_derived_variables,
-        load_credentials,
-        _LenientMap,
-        resolve,
-        resolve_job_path,
-        text_to_adf,
-        lookup_account_id,
-        create_issue,
-    )
-    from lucille.jira.utils import create_jira_session
+from lucille.jira.ticket_utils import (
+    compute_derived_variables,
+    load_credentials,
+    _LenientMap,
+    resolve,
+    resolve_job_path,
+    text_to_adf,
+    lookup_account_id,
+    create_issue,
+)
+from lucille.jira.utils import create_jira_session
 
 
 logging.basicConfig(

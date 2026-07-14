@@ -2,7 +2,6 @@ import requests
 from requests.auth import HTTPBasicAuth
 import argparse
 import logging
-import sys
 from pathlib import Path, PosixPath
 import datetime
 from re import sub
@@ -10,12 +9,7 @@ import pandas as pd
 import yaml
 
 # Handle both direct script execution and module import
-try:
-    from .utils import fetch_all_issues
-except ImportError:
-    # Add parent directory to path for direct script execution
-    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from lucille.jira.utils import fetch_all_issues
+from lucille.jira.utils import fetch_all_issues
 
 
 logging.basicConfig(

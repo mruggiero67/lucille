@@ -21,11 +21,7 @@ from typing import Dict, List, Optional
 import requests
 import yaml
 
-try:
-    from .utils import create_jira_session, fetch_all_issues
-except ImportError:
-    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from lucille.jira.utils import create_jira_session, fetch_all_issues
+from lucille.jira.utils import create_jira_session, fetch_all_issues
 
 
 logger = logging.getLogger(__name__)

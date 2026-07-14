@@ -2,18 +2,12 @@
 Jira ticket changelog utilities — determines when work actually started on a ticket.
 """
 import logging
-import sys
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import requests
 
-try:
-    from .utils import make_jira_request
-except ImportError:
-    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from lucille.jira.utils import make_jira_request
+from lucille.jira.utils import make_jira_request
 
 logger = logging.getLogger(__name__)
 

@@ -22,12 +22,7 @@ import matplotlib.pyplot as plt
 import requests
 from dateutil import parser as date_parser
 
-try:
-    from .utils import create_jira_session, fetch_all_issues
-except ImportError:
-    import sys
-    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from lucille.jira.utils import create_jira_session, fetch_all_issues
+from lucille.jira.utils import create_jira_session, fetch_all_issues
 
 # Configure logging
 logging.basicConfig(

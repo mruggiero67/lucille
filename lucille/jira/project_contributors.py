@@ -14,16 +14,10 @@ import argparse
 from datetime import datetime
 from typing import Dict, List, Any
 import sys
-from pathlib import Path
 from collections import defaultdict
 
 # Handle both direct script execution and module import
-try:
-    from .utils import fetch_all_issues
-except ImportError:
-    # Add parent directory to path for direct script execution
-    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from lucille.jira.utils import fetch_all_issues
+from lucille.jira.utils import fetch_all_issues
 
 
 class JiraAnalyzer:

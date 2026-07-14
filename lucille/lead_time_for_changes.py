@@ -25,25 +25,14 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import yaml
 
-try:
-    from lucille.github.commit_fetcher import (
-        DEFAULT_TICKET_PATTERN,
-        extract_project_key,
-        fetch_all_releases_with_commits,
-    )
-    from lucille.github.github_utils import fetch_org_repos
-    from lucille.jira.ticket_changelog import fetch_ticket_start_dates
-    from lucille.jira.utils import create_jira_session
-except ImportError:
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-    from lucille.github.commit_fetcher import (
-        DEFAULT_TICKET_PATTERN,
-        extract_project_key,
-        fetch_all_releases_with_commits,
-    )
-    from lucille.github.github_utils import fetch_org_repos
-    from lucille.jira.ticket_changelog import fetch_ticket_start_dates
-    from lucille.jira.utils import create_jira_session
+from lucille.github.commit_fetcher import (
+    DEFAULT_TICKET_PATTERN,
+    extract_project_key,
+    fetch_all_releases_with_commits,
+)
+from lucille.github.github_utils import fetch_org_repos
+from lucille.jira.ticket_changelog import fetch_ticket_start_dates
+from lucille.jira.utils import create_jira_session
 
 logging.basicConfig(
     format="%(levelname)-8s %(asctime)s %(filename)s:%(lineno)d %(message)s",

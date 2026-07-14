@@ -17,11 +17,7 @@ import argparse
 from pandas import DataFrame
 import logging
 
-try:
-    from lucille.github.github_utils import fetch_org_repos
-except ImportError:
-    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from lucille.github.github_utils import fetch_org_repos
+from lucille.github.github_utils import fetch_org_repos
 
 
 class GitHubPRAnalyzer:

@@ -25,11 +25,7 @@ from typing import Dict, List
 import requests
 import yaml
 
-try:
-    from .utils import create_jira_session
-except ImportError:
-    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from lucille.jira.utils import create_jira_session
+from lucille.jira.utils import create_jira_session
 
 
 logger = logging.getLogger(__name__)

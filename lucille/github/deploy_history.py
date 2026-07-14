@@ -47,28 +47,15 @@ import requests
 import yaml
 import pandas as pd
 
-try:
-    from lucille.github.github_utils import fetch_org_repos
-except ImportError:
-    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from lucille.github.github_utils import fetch_org_repos
+from lucille.github.github_utils import fetch_org_repos
 
 # Reuse the pure charting functions from the existing weekly_deployment_trends module
-try:
-    from lucille.weekly_deployment_trends import (
-        calculate_weekly_deployments,
-        calculate_statistics,
-        create_weekly_trend_graph,
-        create_summary_report,
-    )
-except ImportError:
-    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from lucille.weekly_deployment_trends import (
-        calculate_weekly_deployments,
-        calculate_statistics,
-        create_weekly_trend_graph,
-        create_summary_report,
-    )
+from lucille.weekly_deployment_trends import (
+    calculate_weekly_deployments,
+    calculate_statistics,
+    create_weekly_trend_graph,
+    create_summary_report,
+)
 
 logging.basicConfig(
     format="%(levelname)-8s %(asctime)s %(filename)s:%(lineno)d %(message)s",

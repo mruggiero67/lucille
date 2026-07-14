@@ -10,7 +10,6 @@ Fetches open security alerts from GitHub organization repositories and generates
 
 import argparse
 import logging
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
@@ -20,11 +19,7 @@ import pandas as pd
 import requests
 import yaml
 
-try:
-    from lucille.github.github_utils import fetch_org_repos
-except ImportError:
-    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from lucille.github.github_utils import fetch_org_repos
+from lucille.github.github_utils import fetch_org_repos
 
 # Configure logging at module level
 logging.basicConfig(
