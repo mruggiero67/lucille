@@ -11,15 +11,22 @@ from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 from lucille.jira.sup_ticket_volume import (
-    get_week_label,
-    get_date_range,
     extract_issue_fields,
-    group_issues_by_created_week,
     calculate_weekly_counts,
     process_issues,
-    classify_trend,
     build_volume_summary,
 )
+from lucille.jira.support.weekly import (
+    classify_trend,
+    get_date_range,
+    get_week_label,
+    group_by_week,
+)
+
+
+def group_issues_by_created_week(issues):
+    """Test shim: match the pre-refactor single-arg call site."""
+    return group_by_week(issues, "created_week")
 
 
 # ============================================================================

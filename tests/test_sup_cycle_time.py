@@ -9,13 +9,20 @@ from datetime import datetime, timedelta
 
 from lucille.jira.sup_cycle_time import (
     calculate_cycle_time_days,
-    get_week_label,
-    get_date_range,
-    group_issues_by_week,
     calculate_weekly_averages,
-    classify_trend,
     build_cycle_time_summary,
 )
+from lucille.jira.support.weekly import (
+    classify_trend,
+    get_date_range,
+    get_week_label,
+    group_by_week,
+)
+
+
+def group_issues_by_week(issues):
+    """Test shim: match the pre-refactor single-arg call site."""
+    return group_by_week(issues, "resolved_week")
 
 
 # ============================================================================
