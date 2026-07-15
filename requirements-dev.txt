@@ -1,0 +1,11 @@
+# Development-only dependencies for lucille.
+# Includes everything in requirements.txt plus test/lint/coverage tools.
+#
+# Install with:  pip install -r requirements-dev.txt
+
+-r requirements.txt
+
+black==25.1.0
+coverage==7.9.1
+pytest==8.4.1
+pytest-cov==6.2.1
