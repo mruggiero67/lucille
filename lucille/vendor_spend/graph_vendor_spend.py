@@ -36,11 +36,9 @@ import matplotlib.ticker as mticker
 import pandas as pd
 
 from lucille.vendor_spend.config import DEFAULT_CONFIG_PATH, load_config
+from lucille.common.logging import setup_logging
 
-logging.basicConfig(
-    format="%(levelname)-10s %(asctime)s %(filename)s %(lineno)d %(message)s",
-    level=logging.INFO,
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 

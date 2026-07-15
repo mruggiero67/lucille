@@ -20,11 +20,11 @@ import pandas as pd
 import yaml
 
 from lucille.jira.utils import create_jira_session, fetch_all_issues
+from lucille.common.config import load_yaml_config
+from lucille.common.logging import setup_logging
+from lucille.common.paths import DEBRIS_DIR
 
-logging.basicConfig(
-    format="%(levelname)-8s %(asctime)s %(message)s",
-    level=logging.INFO,
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -63,11 +63,6 @@ EPIC_FIELDS = [
 # ---------------------------------------------------------------------------
 # Config helpers
 # ---------------------------------------------------------------------------
-
-def load_config(config_path):
-    with open(config_path, "rt", encoding="utf-8") as f:
-        return yaml.safe_load(f)
-
 
 def extract_base_url(config):
     """Strip any trailing API path from the config url to get the Atlassian root."""
@@ -409,7 +404,7 @@ def main():
     )
     parser.add_argument(
         "--output-dir",
-        default=str(Path.home() / "Desktop/debris"),
+        default=str(DEBRIS_DIR),
         help="Directory for output files (default: ~/Desktop/debris)",
     )
     args = parser.parse_args()
@@ -423,7 +418,7 @@ def main():
     md_out = output_dir / f"epic_effort_{args.days}d_summary.md"
 
     # --- Auth & session ---
-    config = load_config(args.config)
+    config = load_yaml_config(args.config, on_missing="raise")
     base_url = extract_base_url(config)
     logger.info(f"Connecting to {base_url} ...")
     session = create_jira_session(base_url, config["email"], config["api_token"])

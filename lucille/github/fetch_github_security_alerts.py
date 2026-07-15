@@ -20,31 +20,13 @@ import requests
 import yaml
 
 from lucille.github.github_utils import fetch_org_repos
+from lucille.common.logging import setup_logging
+from lucille.common.config import load_yaml_config
 
 # Configure logging at module level
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(levelname)-10s %(asctime)s %(filename)s %(lineno)d %(message)s",
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
-
-def load_config(config_path: Optional[Path]) -> dict:
-    """
-    Load configuration from YAML file.
-
-    Pure function with no side effects.
-
-    Args:
-        config_path: Path to YAML configuration file
-
-    Returns:
-        Dictionary containing configuration parameters
-    """
-    if config_path and config_path.exists():
-        with open(config_path, 'r') as f:
-            return yaml.safe_load(f)
-    return {}
 
 
 def calculate_alert_age(created_at: str) -> int:
@@ -544,7 +526,7 @@ def main():
         logger.debug("Verbose logging enabled")
 
     # Load configuration
-    config = load_config(args.config)
+    config = load_yaml_config(args.config, on_missing="empty")
     if not config:
         logger.error(f"Failed to load configuration from {args.config}")
         return 1

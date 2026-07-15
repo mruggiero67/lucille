@@ -13,30 +13,13 @@ import yaml
 import traceback
 
 from lucille.github.github_utils import fetch_org_repos
+from lucille.common.logging import setup_logging
+from lucille.common.config import load_yaml_config
 
 # Configure logging
-logging.basicConfig(
-    format="%(levelname)-10s %(asctime)s %(filename)s %(lineno)d %(message)s",
-    level=logging.DEBUG,
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
-
-def load_config(config_file: str = "config.yaml") -> Dict:
-    """Load configuration from YAML file"""
-    try:
-        with open(config_file, "r") as f:
-            config = yaml.safe_load(f)
-        logger.info(f"Configuration loaded from {config_file}")
-        return config
-    except FileNotFoundError:
-        logger.error(f"Configuration file {config_file} not found")
-        logger.info("Please create a config.yaml file with:")
-        logger.info("github_token: your_token_here")
-        logger.info("repositories:")
-        logger.info("  - org: your-org")
-        logger.info("    repo: your-repo")
-        raise
 
 
 class GitHubMetricsExtractor:
@@ -1009,7 +992,7 @@ if __name__ == "__main__":
 
     try:
         # Load configuration from YAML file
-        config = load_config(config_file)
+        config = load_yaml_config(config_file, on_missing="raise")
 
         github_token = config.get("github_token")
         csv_directory = config.get("csv_directory")

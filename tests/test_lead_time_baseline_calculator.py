@@ -15,7 +15,6 @@ from pathlib import Path
 from context import lucille
 from lucille.jira.lead_time_baseline_calculator import (
     JiraLeadTimeAnalyzer,
-    load_config,
     create_sample_config,
 )
 
@@ -369,30 +368,10 @@ class TestJiraLeadTimeAnalyzer:
 class TestConfigurationFunctions:
     """Test configuration-related functions."""
 
-    def test_load_config_success(self):
-        """Test successful config loading."""
-        config_data = {
-            "jira": {
-                "base_url": "https://test.atlassian.net",
-                "username": "test@example.com",
-                "api_token": "test_token",
-            }
-        }
-
-        with patch(
-            "builtins.open",
-            mock_open(read_data="jira:\n  base_url: https://test.atlassian.net"),
-        ):
-            with patch("yaml.safe_load", return_value=config_data):
-                config = load_config("test_config.yaml")
-
-                assert config["jira"]["base_url"] == "https://test.atlassian.net"
-
-    def test_load_config_file_not_found(self):
-        """Test config loading with missing file."""
-        with patch("builtins.open", side_effect=FileNotFoundError):
-            with pytest.raises(SystemExit):
-                load_config("missing_config.yaml")
+    # test_load_config_success and test_load_config_file_not_found were
+    # removed when the module-local load_config was replaced by the shared
+    # lucille.common.config.load_yaml_config helper (Phase 2 refactor). The
+    # shared helper is covered by tests/test_common_config.py.
 
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.dump")

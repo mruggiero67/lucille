@@ -37,12 +37,10 @@ from lucille.jira.ticket_utils import (
     create_issue,
 )
 from lucille.jira.utils import create_jira_session
+from lucille.common.logging import setup_logging
 
 
-logging.basicConfig(
-    format="%(levelname)-10s %(asctime)s %(filename)s %(lineno)d %(message)s",
-    level=logging.INFO,
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 

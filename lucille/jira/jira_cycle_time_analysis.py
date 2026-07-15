@@ -20,12 +20,11 @@ import requests
 from dateutil import parser as date_parser
 
 from lucille.jira.utils import create_jira_session, fetch_all_issues
+from lucille.common.logging import setup_logging
+from lucille.common.config import load_yaml_config
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 # Jira workflow states
@@ -234,25 +233,6 @@ def calculate_distribution(cycle_times: List[Dict[str, float]]) -> Dict[str, int
 # ============================================================================
 # Side-Effecting Functions (I/O, Network, File Operations)
 # ============================================================================
-
-def load_config(config_path: str) -> Dict:
-    """
-    Load configuration from YAML file.
-
-    Args:
-        config_path: Path to YAML configuration file
-
-    Returns:
-        Configuration dictionary
-    """
-    logger.info(f"Loading configuration from {config_path}")
-    try:
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
-        return config
-    except FileNotFoundError:
-        logger.warning(f"Config file {config_path} not found, using defaults")
-        return {}
 
 
 def fetch_issues(
@@ -566,7 +546,7 @@ def main():
     logger.info(f"Output directory: {output_dir}")
 
     # Load configuration
-    config = load_config(args.config)
+    config = load_yaml_config(args.config, on_missing="empty")
     jira_config = config.get('jira', {})
 
     # Create Jira session

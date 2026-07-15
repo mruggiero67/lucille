@@ -17,11 +17,12 @@ from collections import defaultdict
 from datetime import date
 from pathlib import Path
 from typing import Optional
+from lucille.common.logging import setup_logging
+from lucille.common.paths import DEBRIS_DIR
 
-logging.basicConfig(level=logging.INFO, format="%(message)s")
+setup_logging()
 logger = logging.getLogger(__name__)
 
-DEBRIS_DIR = Path.home() / "Desktop" / "debris"
 
 
 def parse_date(s: str) -> Optional[date]:

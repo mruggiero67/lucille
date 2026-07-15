@@ -10,12 +10,10 @@ import yaml
 
 # Handle both direct script execution and module import
 from lucille.jira.utils import fetch_all_issues
+from lucille.common.logging import setup_logging
 
 
-logging.basicConfig(
-    format="%(levelname)-10s %(asctime)s %(filename)s %(lineno)d %(message)s",
-    level=logging.DEBUG,
-)
+setup_logging()
 
 
 def get_all_issues(

@@ -17,11 +17,9 @@ from dateutil import parser as date_parser
 
 import requests
 import yaml
+from lucille.common.logging import setup_logging
 
-logging.basicConfig(
-    format="%(levelname)-10s %(asctime)s %(filename)s %(lineno)d %(message)s",
-    level=logging.DEBUG,
-)
+setup_logging()
 
 logger = logging.getLogger(__name__)
 

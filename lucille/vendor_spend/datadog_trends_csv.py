@@ -50,11 +50,9 @@ from lucille.vendor_spend.weekly_buckets import (
     bucket_into_weeks,
     complete_week_starts,
 )
+from lucille.common.logging import setup_logging
 
-logging.basicConfig(
-    format="%(levelname)-10s %(asctime)s %(filename)s %(lineno)d %(message)s",
-    level=logging.INFO,
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 VENDOR_LABEL = f"{VENDOR_DATADOG} (Console export)"

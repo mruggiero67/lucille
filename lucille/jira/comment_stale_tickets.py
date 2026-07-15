@@ -26,6 +26,8 @@ import requests
 import yaml
 
 from lucille.jira.utils import create_jira_session
+from lucille.common.config import load_yaml_config
+from lucille.common.logging import setup_logging as _shared_setup_logging
 
 
 logger = logging.getLogger(__name__)
@@ -38,15 +40,11 @@ logger = logging.getLogger(__name__)
 
 def load_config(config_path: str) -> Dict:
     """Load YAML config and return the jira sub-section."""
-    with open(config_path, "r") as fh:
-        raw = yaml.safe_load(fh)
-    if "jira" not in raw:
-        raise ValueError("Config missing required section: 'jira'")
-    jira = raw["jira"]
-    for key in ("base_url", "username", "api_token"):
-        if key not in jira:
-            raise ValueError(f"Config jira section missing required key: '{key}'")
-    return jira
+    return load_yaml_config(
+        config_path,
+        subsection="jira",
+        required_keys=("base_url", "username", "api_token"),
+    )
 
 
 def read_csv(csv_path: str) -> List[Dict]:
@@ -173,13 +171,8 @@ def process_rows(
 # ---------------------------------------------------------------------------
 
 
-def setup_logging(verbose: bool) -> None:
-    level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(
-        format="%(levelname)-10s %(asctime)s %(filename)s %(lineno)d %(message)s",
-        level=level,
-    )
-
+def setup_logging(verbose: bool = False) -> None:
+    _shared_setup_logging(verbose)
 
 def main() -> None:
     parser = argparse.ArgumentParser(

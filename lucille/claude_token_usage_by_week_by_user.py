@@ -15,11 +15,11 @@ from typing import Dict, List
 
 import matplotlib.pyplot as plt
 import pandas as pd
+from lucille.common.logging import setup_logging
+from lucille.common.paths import DEBRIS_DIR
 
 # Configure logging at module level
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -268,13 +268,13 @@ def main():
     parser.add_argument(
         "--csv-dir",
         type=Path,
-        default=Path.home() / "Desktop" / "debris" / "claude_tokens",
+        default=DEBRIS_DIR / "claude_tokens",
         help="Directory containing CSV files with token usage data (default: ~/Desktop/debris/claude_tokens)",
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path.home() / "Desktop" / "debris",
+        default=DEBRIS_DIR,
         help="Directory where output files will be saved (default: ~/Desktop/debris)",
     )
     parser.add_argument(

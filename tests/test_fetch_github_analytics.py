@@ -18,7 +18,6 @@ from context import lucille
 from lucille.github.fetch_analytics import (
     GitHubMetricsExtractor,
     MultiRepoMetricsCollector,
-    load_config,
 )
 
 class TestGitHubMetricsExtractor(unittest.TestCase):

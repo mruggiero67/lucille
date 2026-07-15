@@ -56,16 +56,16 @@ from lucille.weekly_deployment_trends import (
     create_weekly_trend_graph,
     create_summary_report,
 )
+from lucille.common.config import load_yaml_config
+from lucille.common.logging import setup_logging
+from lucille.common.paths import BIN_DIR, DEBRIS_DIR, TWO_X_TWO_DIR
 
-logging.basicConfig(
-    format="%(levelname)-8s %(asctime)s %(filename)s:%(lineno)d %(message)s",
-    level=logging.INFO,
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 DEFAULT_SINCE = "2025-05-12"
-DEFAULT_GITHUB_CONFIG = Path.home() / "bin" / "github_config.yaml"
-DEFAULT_JIRA_EPIC_CONFIG = Path.home() / "bin" / "jira_epic_config.yaml"
+DEFAULT_GITHUB_CONFIG = BIN_DIR / "github_config.yaml"
+DEFAULT_JIRA_EPIC_CONFIG = BIN_DIR / "jira_epic_config.yaml"
 
 # CSV columns — identical to slack_deploys.py output for downstream compatibility
 CSV_COLUMNS = ["date", "time", "user", "service", "version", "timestamp", "raw_message"]
@@ -79,16 +79,8 @@ def load_config(
     github_config_path: Path = DEFAULT_GITHUB_CONFIG,
     jira_epic_config_path: Path = DEFAULT_JIRA_EPIC_CONFIG,
 ) -> Dict[str, Any]:
-    def _load(p: Path) -> Dict:
-        try:
-            with open(p) as f:
-                return yaml.safe_load(f) or {}
-        except FileNotFoundError:
-            logger.error(f"Config file not found: {p}")
-            sys.exit(1)
-
-    gh = _load(github_config_path)
-    epic = _load(jira_epic_config_path)
+    gh = load_yaml_config(github_config_path)
+    epic = load_yaml_config(jira_epic_config_path)
 
     token = gh.get("github_token")
     org = gh.get("org")
@@ -98,10 +90,10 @@ def load_config(
 
     deploy_history_cfg = epic.get("deploy_history", {})
     cfr = epic.get("cfr", {})
-    output_dir = cfr.get("output_directory", str(Path.home() / "Desktop" / "debris"))
+    output_dir = cfr.get("output_directory", str(DEBRIS_DIR))
     graph_output_dir = deploy_history_cfg.get(
         "graph_output_directory",
-        str(Path.home() / "Desktop" / "debris" / "2x2" / "deployments"),
+        str(TWO_X_TWO_DIR / "deployments"),
     )
 
     return {
@@ -127,7 +119,7 @@ class _GitHubReleases:
             "Authorization": f"token {token}",
             "Accept": "application/vnd.github.v3+json",
         }
-        self.cache_dir = cache_dir or (Path.home() / "Desktop" / "debris" / "cfr_cache")
+        self.cache_dir = cache_dir or (DEBRIS_DIR / "cfr_cache")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     def _cache_key(self, repo: str) -> Path:

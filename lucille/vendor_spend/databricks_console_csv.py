@@ -47,11 +47,9 @@ from lucille.vendor_spend.fetch_vendor_spend import (
     write_csv as write_long_format_csv,
 )
 from lucille.vendor_spend.weekly_buckets import monday_of, to_date
+from lucille.common.logging import setup_logging
 
-logging.basicConfig(
-    format="%(levelname)-10s %(asctime)s %(filename)s %(lineno)d %(message)s",
-    level=logging.INFO,
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 VENDOR_LABEL = f"{VENDOR_DATABRICKS} (Console export)"

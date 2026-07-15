@@ -20,30 +20,12 @@ import yaml
 
 # Handle both direct script execution and module import
 from lucille.jira.utils import fetch_all_issues, create_jira_session
+from lucille.common.logging import setup_logging as _shared_setup_logging
+from lucille.common.config import load_yaml_config
 
 
 def setup_logging(level: str = "INFO") -> None:
-    """Setup logging configuration."""
-    logging.basicConfig(
-        level=getattr(logging, level.upper()),
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-
-
-def load_config(config_path: str) -> dict:
-    """Load configuration from YAML file."""
-    try:
-        with open(config_path, "r") as file:
-            config = yaml.safe_load(file)
-        logging.info(f"Configuration loaded from {config_path}")
-        return config
-    except FileNotFoundError:
-        logging.error(f"Configuration file not found: {config_path}")
-        sys.exit(1)
-    except yaml.YAMLError as e:
-        logging.error(f"Error parsing YAML configuration: {e}")
-        sys.exit(1)
+    _shared_setup_logging(verbose=level.upper() == "DEBUG")
 
 
 def validate_config(config: dict) -> None:
@@ -168,7 +150,7 @@ def main():
     logging.info("Starting Jira epic key extraction")
 
     # Load and validate configuration
-    config = load_config(args.config)
+    config = load_yaml_config(args.config)
     validate_config(config)
 
     # Create Jira session

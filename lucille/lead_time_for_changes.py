@@ -33,15 +33,15 @@ from lucille.github.commit_fetcher import (
 from lucille.github.github_utils import fetch_org_repos
 from lucille.jira.ticket_changelog import fetch_ticket_start_dates
 from lucille.jira.utils import create_jira_session
+from lucille.common.config import load_yaml_config
+from lucille.common.logging import setup_logging
+from lucille.common.paths import BIN_DIR, DEBRIS_DIR, TWO_X_TWO_DIR
 
-logging.basicConfig(
-    format="%(levelname)-8s %(asctime)s %(filename)s:%(lineno)d %(message)s",
-    level=logging.INFO,
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
-DEFAULT_GITHUB_CONFIG = Path.home() / "bin" / "github_config.yaml"
-DEFAULT_JIRA_EPIC_CONFIG = Path.home() / "bin" / "jira_epic_config.yaml"
+DEFAULT_GITHUB_CONFIG = BIN_DIR / "github_config.yaml"
+DEFAULT_JIRA_EPIC_CONFIG = BIN_DIR / "jira_epic_config.yaml"
 
 
 # ---------------------------------------------------------------------------
@@ -245,16 +245,8 @@ def load_config(
     github_config_path: Path = DEFAULT_GITHUB_CONFIG,
     jira_epic_config_path: Path = DEFAULT_JIRA_EPIC_CONFIG,
 ) -> Dict[str, Any]:
-    def _load(p: Path) -> Dict:
-        try:
-            with open(p) as f:
-                return yaml.safe_load(f) or {}
-        except FileNotFoundError:
-            logger.error(f"Config file not found: {p}")
-            sys.exit(1)
-
-    gh = _load(github_config_path)
-    epic = _load(jira_epic_config_path)
+    gh = load_yaml_config(github_config_path)
+    epic = load_yaml_config(jira_epic_config_path)
 
     token = gh.get("github_token")
     org = gh.get("org")
@@ -275,12 +267,12 @@ def load_config(
         "ticket_pattern": ltfc.get("ticket_pattern", DEFAULT_TICKET_PATTERN),
         "weeks_back": ltfc.get("weeks_back", 12),
         "output_directory": Path(
-            ltfc.get("output_directory", str(Path.home() / "Desktop" / "debris"))
+            ltfc.get("output_directory", str(DEBRIS_DIR))
         ),
         "chart_output_directory": Path(
             ltfc.get(
                 "chart_output_directory",
-                str(Path.home() / "Desktop" / "debris" / "2x2" / "lead_time"),
+                str(TWO_X_TWO_DIR / "lead_time"),
             )
         ),
     }

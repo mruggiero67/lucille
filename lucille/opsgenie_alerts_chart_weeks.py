@@ -12,12 +12,10 @@ from collections import defaultdict
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+from lucille.common.logging import setup_logging
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(levelname)-10s %(asctime)s %(filename)s %(lineno)d %(message)s",
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 

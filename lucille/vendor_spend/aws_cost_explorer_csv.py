@@ -50,11 +50,9 @@ from lucille.vendor_spend.weekly_buckets import (
     monday_of,
     to_date,
 )
+from lucille.common.logging import setup_logging
 
-logging.basicConfig(
-    format="%(levelname)-10s %(asctime)s %(filename)s %(lineno)d %(message)s",
-    level=logging.INFO,
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 # Source label so the vendor field on the chart distinguishes this from the

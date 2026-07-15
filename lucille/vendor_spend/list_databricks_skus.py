@@ -22,6 +22,7 @@ from lucille.vendor_spend.databricks_cost import (
     LEGACY_COL_SKU,
     fetch_raw,
 )
+from lucille.common.logging import setup_logging
 
 
 # Approximate AWS public list prices, USD per DBU, **Premium tier**.
@@ -115,10 +116,7 @@ def lookup_suggested_price(sku: str) -> float | None:
         return KNOWN_LIST_PRICES_USD_PER_DBU[sku]
     return KNOWN_LIST_PRICES_USD_PER_DBU.get(normalize_sku_for_lookup(sku))
 
-logging.basicConfig(
-    format="%(levelname)-10s %(asctime)s %(filename)s %(lineno)d %(message)s",
-    level=logging.INFO,
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 

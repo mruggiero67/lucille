@@ -18,6 +18,7 @@ from pandas import DataFrame
 import logging
 
 from lucille.github.github_utils import fetch_org_repos
+from lucille.common.config import load_yaml_config
 
 
 class GitHubPRAnalyzer:
@@ -389,27 +390,6 @@ def mk_subset_file(filtered_df: DataFrame, csv_path: str):
     logging.info(f"Subset CSV file created at '{csv_path}' with {len(filtered_df)} PRs.")
 
 
-def load_config(config_path: str) -> Dict[str, Any]:
-    """
-    Load configuration from YAML file.
-
-    Args:
-        config_path: Path to the YAML configuration file
-
-    Returns:
-        Configuration dictionary
-    """
-    try:
-        with open(config_path, "r") as file:
-            config = yaml.safe_load(file)
-        return config
-    except FileNotFoundError:
-        print(f"Error: Configuration file '{config_path}' not found.")
-        sys.exit(1)
-    except yaml.YAMLError as e:
-        print(f"Error parsing YAML configuration: {e}")
-        sys.exit(1)
-
 
 def validate_config(config: Dict[str, Any]) -> bool:
     """
@@ -469,7 +449,7 @@ def main(config_path):
         sys.exit(0)
 
     # Load and validate configuration
-    config = load_config(config_path)
+    config = load_yaml_config(config_path)
     if not validate_config(config):
         sys.exit(1)
 

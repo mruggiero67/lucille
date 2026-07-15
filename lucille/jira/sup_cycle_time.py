@@ -21,12 +21,11 @@ import requests
 from dateutil import parser as date_parser
 
 from lucille.jira.utils import create_jira_session, fetch_all_issues
+from lucille.common.logging import setup_logging
+from lucille.common.config import load_yaml_config
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -234,25 +233,6 @@ def build_cycle_time_summary(
 # ============================================================================
 # Side-Effecting Functions (I/O, Network, File Operations)
 # ============================================================================
-
-def load_config(config_path: str) -> Dict:
-    """
-    Load configuration from YAML file.
-
-    Args:
-        config_path: Path to YAML configuration file
-
-    Returns:
-        Configuration dictionary
-    """
-    logger.info(f"Loading configuration from {config_path}")
-    try:
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
-        return config
-    except FileNotFoundError:
-        logger.error(f"Config file {config_path} not found")
-        raise
 
 
 def fetch_sup_issues(
@@ -505,7 +485,7 @@ def main():
     logger.info(f"Output directory: {output_dir}")
 
     # Load configuration
-    config = load_config(args.config)
+    config = load_yaml_config(args.config, on_missing="raise")
 
     # Extract Jira configuration
     base_url = config.get('url', '').replace('/rest/api/3/search/jql', '')

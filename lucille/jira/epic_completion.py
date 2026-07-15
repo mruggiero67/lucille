@@ -20,11 +20,10 @@ import logging
 
 # Handle both direct script execution and module import
 from lucille.jira.utils import fetch_all_issues
+from lucille.common.logging import setup_logging
+from lucille.common.config import load_yaml_config
 
-logging.basicConfig(
-        format="%(levelname)-10s %(asctime)s %(filename)s %(lineno)d %(message)s",
-        level=logging.DEBUG,
-)
+setup_logging()
 
 
 class JiraEpicAnalyzer:
@@ -502,27 +501,6 @@ class JiraEpicAnalyzer:
                 )
 
 
-def load_config(config_path: str) -> Dict[str, Any]:
-    """
-    Load configuration from YAML file.
-
-    Args:
-        config_path: Path to the YAML configuration file
-
-    Returns:
-        Configuration dictionary
-    """
-    try:
-        with open(config_path, "r") as file:
-            config = yaml.safe_load(file)
-        return config
-    except FileNotFoundError:
-        print(f"Error: Configuration file '{config_path}' not found.")
-        sys.exit(1)
-    except yaml.YAMLError as e:
-        print(f"Error parsing YAML configuration: {e}")
-        sys.exit(1)
-
 
 def validate_config(config: Dict[str, Any]) -> bool:
     """
@@ -617,7 +595,7 @@ def main():
         sys.exit(0)
 
     # Load and validate configuration
-    config = load_config(config_path)
+    config = load_yaml_config(config_path)
     if not validate_config(config):
         sys.exit(1)
 

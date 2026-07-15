@@ -41,14 +41,13 @@ matplotlib.use("Agg")  # no display required
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
+from lucille.common.logging import setup_logging
+from lucille.common.paths import DEBRIS_DIR
 
-logging.basicConfig(
-    format="%(levelname)-10s %(asctime)s %(filename)s %(lineno)d %(message)s",
-    level=logging.INFO,
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
-DEFAULT_OUTPUT_DIR = Path.home() / "Desktop" / "debris"
+DEFAULT_OUTPUT_DIR = DEBRIS_DIR
 
 PROJECT_COL = "project"
 CATEGORY_COL = "cost_category"

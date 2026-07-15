@@ -16,30 +16,12 @@ import requests
 import yaml
 from requests.auth import HTTPBasicAuth
 import argparse
+from lucille.common.logging import setup_logging as _shared_setup_logging
+from lucille.common.config import load_yaml_config
 
 
-def setup_logging(log_level: str = "INFO") -> None:
-    """Set up logging configuration."""
-    logging.basicConfig(
-        level=getattr(logging, log_level.upper()),
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-
-
-def load_config(config_path: str) -> Dict:
-    """Load configuration from YAML file."""
-    try:
-        with open(config_path, "r") as file:
-            config = yaml.safe_load(file)
-        logging.info(f"Configuration loaded from {config_path}")
-        return config
-    except FileNotFoundError:
-        logging.error(f"Configuration file not found: {config_path}")
-        sys.exit(1)
-    except yaml.YAMLError as e:
-        logging.error(f"Error parsing YAML configuration: {e}")
-        sys.exit(1)
+def setup_logging(level: str = "INFO") -> None:
+    _shared_setup_logging(verbose=level.upper() == "DEBUG")
 
 
 class JiraClient:
@@ -224,7 +206,7 @@ def main(config_path: str) -> None:
     setup_logging(log_level="DEBUG")
 
     # Load configuration
-    config = load_config(config_path)
+    config = load_yaml_config(config_path)
 
     # Initialize Jira client
     jira_config = config["jira"]

@@ -17,6 +17,7 @@ import yaml
 
 # Handle both direct script execution and module import
 from lucille.jira.utils import fetch_all_issues, create_jira_session
+from lucille.common.logging import setup_logging as _shared_setup_logging
 
 
 class JiraDeployAnalyzer:
@@ -438,13 +439,7 @@ class JiraDeployAnalyzer:
 
 
 def setup_logging(verbose: bool = False) -> None:
-    """Setup logging configuration."""
-    log_level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(
-        format="%(levelname)-10s %(asctime)s %(filename)s %(lineno)d %(message)s",
-        level=log_level
-    )
-
+    _shared_setup_logging(verbose)
 
 def main():
     parser = argparse.ArgumentParser(

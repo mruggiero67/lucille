@@ -15,29 +15,15 @@ from typing import Dict
 import matplotlib.pyplot as plt
 import pandas as pd
 import yaml
+from lucille.common.logging import setup_logging
+from lucille.common.config import load_yaml_config
+from lucille.common.paths import DEBRIS_DIR
 
 
 # Configure logging at module level
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
-
-def load_config(config_path: Path) -> Dict:
-    """
-    Load configuration from YAML file.
-
-    Args:
-        config_path: Path to the YAML configuration file
-
-    Returns:
-        Dictionary containing configuration parameters
-    """
-    if config_path.exists():
-        with open(config_path, "r") as f:
-            return yaml.safe_load(f)
-    return {}
 
 
 def calculate_total_tokens(row: pd.Series) -> int:
@@ -237,13 +223,13 @@ def main():
     parser.add_argument(
         "--csv",
         type=Path,
-        default=Path.home() / "Desktop" / "debris" / "2025_10_23_claude_token_use.csv",
+        default=DEBRIS_DIR / "2025_10_23_claude_token_use.csv",
         help="Path to the CSV file containing token usage data (default: ~/Desktop/debris/2025_10_23_claude_token_use.csv)",
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path.home() / "Desktop" / "debris",
+        default=DEBRIS_DIR,
         help="Directory where output files will be saved (default: ~/Desktop/debris)",
     )
     parser.add_argument(
@@ -263,7 +249,7 @@ def main():
     # Load configuration if provided
     config = {}
     if args.config:
-        config = load_config(args.config)
+        config = load_yaml_config(args.config, on_missing="empty")
         logger.debug(f"Loaded configuration: {config}")
 
     # Validate input file exists

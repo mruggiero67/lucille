@@ -18,30 +18,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import yaml
+from lucille.common.logging import setup_logging
+from lucille.common.config import load_yaml_config
+from lucille.common.paths import DEBRIS_DIR
 
 # Configure logging at module level
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
-
-def load_config(config_path: Path) -> dict:
-    """
-    Load configuration from YAML file.
-
-    Pure function with no side effects.
-
-    Args:
-        config_path: Path to YAML configuration file
-
-    Returns:
-        Dictionary containing configuration parameters
-    """
-    if config_path and config_path.exists():
-        with open(config_path, "r") as f:
-            return yaml.safe_load(f)
-    return {}
 
 
 def calculate_weekly_deployments(
@@ -322,7 +306,7 @@ def main():
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path.home() / "Desktop" / "debris",
+        default=DEBRIS_DIR,
         help="Directory where output files will be saved (default: ~/Desktop/debris)",
     )
     parser.add_argument(
@@ -348,7 +332,7 @@ def main():
         logger.debug("Verbose logging enabled")
 
     # Load configuration if provided
-    config = load_config(args.config) if args.config else {}
+    config = load_yaml_config(args.config, on_missing="empty") if args.config else {}
     logger.debug(f"Loaded configuration: {config}")
 
     # Validate input file exists

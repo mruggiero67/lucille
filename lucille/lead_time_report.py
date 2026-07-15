@@ -30,15 +30,14 @@ from lucille.lead_time.visualizations import (
     render_distribution_chart,
     render_trends_chart,
 )
+from lucille.common.logging import setup_logging
+from lucille.common.paths import DEBRIS_DIR
 
-logging.basicConfig(
-    format="%(levelname)-8s %(asctime)s %(filename)s:%(lineno)d %(message)s",
-    level=logging.INFO,
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
-DEFAULT_OUTPUT_DIR = Path.home() / "Desktop" / "debris"
-DEFAULT_INPUT = Path.home() / "Desktop" / "debris" / "2026_04_23_lead_time_changes_detailed.csv"
+DEFAULT_OUTPUT_DIR = DEBRIS_DIR
+DEFAULT_INPUT = DEBRIS_DIR / "2026_04_23_lead_time_changes_detailed.csv"
 
 
 def _datestamp() -> str:

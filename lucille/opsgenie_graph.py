@@ -7,11 +7,9 @@ import yaml
 import os
 import logging
 import argparse
+from lucille.common.logging import setup_logging
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(levelname)-10s %(asctime)s %(filename)s %(lineno)d %(message)s",
-)
+setup_logging()
 
 def analyze_alerts_per_day(
     csv_file: str,

@@ -16,6 +16,7 @@ import sys
 from typing import List, Dict, Any, Set
 from pathlib import Path
 import time
+from lucille.common.config import load_yaml_config
 
 
 class JiraLabelUpdater:
@@ -263,19 +264,6 @@ class JiraLabelUpdater:
         print(f"\nSuccess Rate: {success_rate:.1f}%")
 
 
-def load_config(config_path: str) -> Dict[str, Any]:
-    """Load configuration from YAML file."""
-    try:
-        with open(config_path, "r") as file:
-            config = yaml.safe_load(file)
-        return config
-    except FileNotFoundError:
-        print(f"Error: Configuration file '{config_path}' not found.")
-        sys.exit(1)
-    except yaml.YAMLError as e:
-        print(f"Error parsing YAML configuration: {e}")
-        sys.exit(1)
-
 
 def validate_config(config: Dict[str, Any]) -> bool:
     """Validate configuration."""
@@ -394,7 +382,7 @@ def main():
         print("\nPlease edit the configuration file and CSV, then run again.")
         return
 
-    config = load_config(config_path)
+    config = load_yaml_config(config_path)
     if not validate_config(config):
         sys.exit(1)
 
