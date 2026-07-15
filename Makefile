@@ -70,6 +70,11 @@ mv_datadog:
 datadog_spend:
 	python -m lucille.vendor_spend.datadog_trends_csv --csv ~/Desktop/debris/$(DATE_PREFIX)_datadog_spend.csv
 
+# AI-assist impact metrics: % AI-touched PRs, merge/revert rate AI vs human,
+# and ticket cycle-time AI vs human. Fetches ~90 days of PRs by default.
+ai_metrics:
+	python -m lucille.ai_metrics.main --config ~/bin/github_config.yaml --jira-config ~/bin/jira.yaml
+
 
 .PHONY: list
 
