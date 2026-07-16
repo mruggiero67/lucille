@@ -20,8 +20,35 @@ import requests
 import yaml
 
 from lucille.github.github_utils import fetch_org_repos
+from lucille.github.session import GITHUB_API_BASE, create_github_session, paginate
 from lucille.common.logging import setup_logging
 from lucille.common.config import load_yaml_config
+
+
+def _fetch_alerts(repo: str, token: str, endpoint: str, alert_kind: str) -> List[dict]:
+    """Fetch open alerts of a given kind for a repository.
+
+    Handles the three security-alert endpoints uniformly. Returns [] when
+    the endpoint 404s (e.g. Dependabot not enabled, or repo doesn't exist).
+
+    Args:
+        repo: ``org/repo`` string.
+        token: GitHub PAT.
+        endpoint: URL suffix, e.g. ``dependabot/alerts``.
+        alert_kind: Human label for logging (e.g. ``"Dependabot"``).
+    """
+    session = create_github_session(token)
+    url = f"{GITHUB_API_BASE}/repos/{repo}/{endpoint}"
+    try:
+        return list(paginate(session, url, {"state": "open"}))
+    except requests.exceptions.HTTPError as e:
+        if e.response is not None and e.response.status_code == 404:
+            return []
+        logger.warning(f"Failed to fetch {alert_kind} alerts for {repo}: {e}")
+        return []
+    except requests.exceptions.RequestException as e:
+        logger.warning(f"Failed to fetch {alert_kind} alerts for {repo}: {e}")
+        return []
 
 # Configure logging at module level
 setup_logging()
@@ -137,161 +164,22 @@ def get_code_location(alert: dict, alert_type: str) -> str:
 def fetch_dependabot_alerts(repo: str, token: str) -> List[dict]:
     """
     TODO allow dependabot API calls to be paginated
-    via cursor-based pagination
+    via cursor-based pagination.
 
-    Fetch Dependabot alerts for a repository.
-
-    Side-effecting function that makes API calls.
-
-    Args:
-        repo: Repository name (org/repo)
-        token: GitHub personal access token
-
-    Returns:
-        List of alert dictionaries
+    Fetch Dependabot alerts for a repository. Returns [] if the repo
+    doesn't have Dependabot enabled (404).
     """
-    headers = {
-        'Authorization': f'token {token}',
-        'Accept': 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28'
-    }
-
-    alerts = []
-    page = 1
-
-    while True:
-        url = f'https://api.github.com/repos/{repo}/dependabot/alerts'
-        params = {'state': 'open'}
-
-        try:
-            response = requests.get(url, headers=headers, params=params)
-
-            if response.status_code == 404:
-                # Repository doesn't have Dependabot enabled or doesn't exist
-                return []
-
-            response.raise_for_status()
-            page_alerts = response.json()
-
-            if not page_alerts:
-                break
-
-            alerts.extend(page_alerts)
-
-            if len(page_alerts) < 100:
-                break
-
-            page += 1
-
-        except requests.exceptions.RequestException as e:
-            logger.warning(f"--------> Failed to fetch Dependabot alerts for {repo}: {e} {response.json()}")
-            break
-
-    return alerts
+    return _fetch_alerts(repo, token, "dependabot/alerts", "Dependabot")
 
 
 def fetch_code_scanning_alerts(repo: str, token: str) -> List[dict]:
-    """
-    Fetch code scanning alerts for a repository.
-
-    Side-effecting function that makes API calls.
-
-    Args:
-        repo: Repository name (org/repo)
-        token: GitHub personal access token
-
-    Returns:
-        List of alert dictionaries
-    """
-    headers = {
-        'Authorization': f'token {token}',
-        'Accept': 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28'
-    }
-
-    alerts = []
-    page = 1
-
-    while True:
-        url = f'https://api.github.com/repos/{repo}/code-scanning/alerts'
-        params = {'state': 'open', 'page': page, 'per_page': 100}
-
-        try:
-            response = requests.get(url, headers=headers, params=params)
-
-            if response.status_code == 404:
-                return []
-
-            response.raise_for_status()
-            page_alerts = response.json()
-
-            if not page_alerts:
-                break
-
-            alerts.extend(page_alerts)
-
-            if len(page_alerts) < 100:
-                break
-
-            page += 1
-
-        except requests.exceptions.RequestException as e:
-            logger.warning(f"Failed to fetch code scanning alerts for {repo}: {e}")
-            break
-
-    return alerts
+    """Fetch code scanning alerts for a repository. Returns [] on 404."""
+    return _fetch_alerts(repo, token, "code-scanning/alerts", "code scanning")
 
 
 def fetch_secret_scanning_alerts(repo: str, token: str) -> List[dict]:
-    """
-    Fetch secret scanning alerts for a repository.
-
-    Side-effecting function that makes API calls.
-
-    Args:
-        repo: Repository name (org/repo)
-        token: GitHub personal access token
-
-    Returns:
-        List of alert dictionaries
-    """
-    headers = {
-        'Authorization': f'token {token}',
-        'Accept': 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28'
-    }
-
-    alerts = []
-    page = 1
-
-    while True:
-        url = f'https://api.github.com/repos/{repo}/secret-scanning/alerts'
-        params = {'state': 'open', 'page': page, 'per_page': 100}
-
-        try:
-            response = requests.get(url, headers=headers, params=params)
-
-            if response.status_code == 404:
-                return []
-
-            response.raise_for_status()
-            page_alerts = response.json()
-
-            if not page_alerts:
-                break
-
-            alerts.extend(page_alerts)
-
-            if len(page_alerts) < 100:
-                break
-
-            page += 1
-
-        except requests.exceptions.RequestException as e:
-            logger.warning(f"Failed to fetch secret scanning alerts for {repo}: {e}")
-            break
-
-    return alerts
+    """Fetch secret scanning alerts for a repository. Returns [] on 404."""
+    return _fetch_alerts(repo, token, "secret-scanning/alerts", "secret scanning")
 
 
 def process_alerts(repos: List[str], token: str) -> List[dict]:

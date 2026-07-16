@@ -9,9 +9,10 @@ from typing import Any, Dict, List
 
 import requests
 
+from lucille.github.session import GITHUB_API_BASE, create_github_session, paginate
+
 logger = logging.getLogger(__name__)
 
-GITHUB_API_BASE = "https://api.github.com"
 DEFAULT_TICKET_PATTERN = r"(?:OOT|SSJ|DEVOPS|DIP)-\d+"
 
 
@@ -39,52 +40,12 @@ def extract_project_key(ticket_key: str) -> str:
 # Side-effecting functions
 # ---------------------------------------------------------------------------
 
-def _github_headers(token: str) -> Dict[str, str]:
-    return {
-        "Authorization": f"token {token}",
-        "Accept": "application/vnd.github.v3+json",
-    }
-
-
-def _paginate_get(url: str, headers: Dict[str, str], params: Dict[str, Any]) -> List[Any]:
-    """Paginate a GitHub list endpoint with exponential-backoff rate-limit handling."""
-    results, page = [], 1
-    while True:
-        params["page"] = page
-        params["per_page"] = 100
-        resp = None
-        for attempt in range(5):
-            try:
-                resp = requests.get(url, headers=headers, params=params, timeout=30)
-                if resp.status_code == 403 and "rate limit" in resp.text.lower():
-                    wait = 2 ** attempt * 30
-                    logger.warning(f"Rate limited — sleeping {wait}s")
-                    time.sleep(wait)
-                    resp = None
-                    continue
-                resp.raise_for_status()
-                break
-            except requests.exceptions.RequestException:
-                if attempt == 4:
-                    raise
-                time.sleep(2 ** attempt)
-        if resp is None:
-            break
-        page_data = resp.json()
-        if not page_data:
-            break
-        results.extend(page_data)
-        if len(page_data) < 100:
-            break
-        page += 1
-    return results
-
-
 def _fetch_releases(token: str, org: str, repo: str, since: datetime) -> List[Dict[str, Any]]:
     """Return all releases for repo published on or after since."""
+    session = create_github_session(token)
     url = f"{GITHUB_API_BASE}/repos/{org}/{repo}/releases"
     try:
-        raw = _paginate_get(url, _github_headers(token), {})
+        raw = list(paginate(session, url))
     except requests.exceptions.RequestException as e:
         logger.warning(f"{repo}: releases fetch failed — {e}")
         return []
@@ -103,16 +64,18 @@ def _fetch_releases(token: str, org: str, repo: str, since: datetime) -> List[Di
 def fetch_commits_between_tags(
     token: str, org: str, repo: str, base_tag: str, head_tag: str
 ) -> List[Dict[str, str]]:
+    """Return commits included in head_tag but not base_tag via the GitHub compare API.
+
+    Each dict has keys: sha, message. Returns [] on 404 or repeated failure.
+
+    Note: the compare API returns a single object (not paginated), so we use
+    ``session.get`` directly rather than ``paginate``.
     """
-    Return commits included in head_tag but not base_tag via the GitHub compare API.
-    Each dict has keys: sha, message.
-    Returns [] on 404 or repeated failure.
-    """
+    session = create_github_session(token)
     url = f"{GITHUB_API_BASE}/repos/{org}/{repo}/compare/{base_tag}...{head_tag}"
-    headers = _github_headers(token)
     for attempt in range(5):
         try:
-            resp = requests.get(url, headers=headers, timeout=30)
+            resp = session.get(url, timeout=30)
             if resp.status_code == 404:
                 logger.warning(f"{repo}: compare {base_tag}...{head_tag} not found")
                 return []

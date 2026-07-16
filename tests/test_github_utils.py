@@ -1,67 +1,65 @@
-from unittest.mock import MagicMock, patch
+"""Tests for lucille.github.github_utils.
+
+Pagination and auth are covered by tests/test_github_session.py. These tests
+focus on this module's own concerns: filtering out archived repos and
+returning name-only strings.
+"""
+
+from unittest.mock import patch
 
 from context import lucille  # noqa: F401
 from lucille.github.github_utils import fetch_org_repos
 
 
-def _make_response(repos: list, status_code: int = 200) -> MagicMock:
-    response = MagicMock()
-    response.status_code = status_code
-    response.json.return_value = repos
-    response.raise_for_status.return_value = None
-    return response
-
-
-@patch("lucille.github.github_utils.requests.get")
-def test_fetch_org_repos_returns_non_archived(mock_get):
-    page1 = [
+@patch("lucille.github.github_utils.paginate")
+@patch("lucille.github.github_utils.create_github_session")
+def test_fetch_org_repos_returns_non_archived(mock_session, mock_paginate):
+    mock_paginate.return_value = iter([
         {"name": "active-repo", "archived": False},
         {"name": "archived-repo", "archived": True},
         {"name": "another-active", "archived": False},
-    ]
-    mock_get.side_effect = [
-        _make_response(page1),
-        _make_response([]),  # empty second page signals end of pagination
-    ]
-
-    result = fetch_org_repos("myorg", "token123")
-
-    assert result == ["active-repo", "another-active"]
+    ])
+    assert fetch_org_repos("myorg", "t") == ["active-repo", "another-active"]
 
 
-@patch("lucille.github.github_utils.requests.get")
-def test_fetch_org_repos_paginates(mock_get):
-    page1 = [{"name": f"repo-{i}", "archived": False} for i in range(100)]
-    page2 = [{"name": "last-repo", "archived": False}]
-    mock_get.side_effect = [
-        _make_response(page1),
-        _make_response(page2),
-        _make_response([]),
-    ]
-
-    result = fetch_org_repos("myorg", "token123")
-
-    assert len(result) == 101
-    assert "repo-0" in result
-    assert "last-repo" in result
+@patch("lucille.github.github_utils.paginate")
+@patch("lucille.github.github_utils.create_github_session")
+def test_fetch_org_repos_missing_archived_key_treated_as_active(mock_session, mock_paginate):
+    # If the API omits the 'archived' field for some reason, err on the side
+    # of including the repo.
+    mock_paginate.return_value = iter([{"name": "no-archived-key"}])
+    assert fetch_org_repos("myorg", "t") == ["no-archived-key"]
 
 
-@patch("lucille.github.github_utils.requests.get")
-def test_fetch_org_repos_empty_org(mock_get):
-    mock_get.return_value = _make_response([])
-
-    result = fetch_org_repos("emptyorg", "token123")
-
-    assert result == []
+@patch("lucille.github.github_utils.paginate")
+@patch("lucille.github.github_utils.create_github_session")
+def test_fetch_org_repos_empty_org(mock_session, mock_paginate):
+    mock_paginate.return_value = iter([])
+    assert fetch_org_repos("emptyorg", "t") == []
 
 
-@patch("lucille.github.github_utils.requests.get")
-def test_fetch_org_repos_passes_correct_headers(mock_get):
-    mock_get.return_value = _make_response([])
+@patch("lucille.github.github_utils.paginate")
+@patch("lucille.github.github_utils.create_github_session")
+def test_fetch_org_repos_uses_correct_url(mock_session, mock_paginate):
+    mock_paginate.return_value = iter([])
+    fetch_org_repos("myorg", "t")
+    call_args = mock_paginate.call_args
+    assert call_args.args[1].endswith("/orgs/myorg/repos")
 
+
+@patch("lucille.github.github_utils.paginate")
+@patch("lucille.github.github_utils.create_github_session")
+def test_fetch_org_repos_requests_all_repo_types(mock_session, mock_paginate):
+    # We want private + public + forks so the caller sees the complete picture.
+    mock_paginate.return_value = iter([])
+    fetch_org_repos("myorg", "t")
+    call_args = mock_paginate.call_args
+    assert call_args.args[2] == {"type": "all"}
+
+
+@patch("lucille.github.github_utils.create_github_session")
+@patch("lucille.github.github_utils.paginate")
+def test_fetch_org_repos_passes_token_to_session(mock_paginate, mock_session):
+    mock_paginate.return_value = iter([])
     fetch_org_repos("myorg", "mytoken")
-
-    call_kwargs = mock_get.call_args
-    headers = call_kwargs.kwargs["headers"]
-    assert headers["Authorization"] == "token mytoken"
-    assert headers["Accept"] == "application/vnd.github+json"
+    mock_session.assert_called_once_with("mytoken")

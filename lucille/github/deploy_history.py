@@ -37,17 +37,16 @@ import json
 import logging
 import re
 import sys
-import time
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import requests
 import yaml
 import pandas as pd
 
 from lucille.github.github_utils import fetch_org_repos
+from lucille.github.session import GITHUB_API_BASE, create_github_session, paginate
 
 # Reuse the pure charting functions from the existing weekly_deployment_trends module
 from lucille.weekly_deployment_trends import (
@@ -109,54 +108,24 @@ def load_config(
 # ---------------------------------------------------------------------------
 
 class _GitHubReleases:
-    """Minimal GitHub releases fetcher with caching and rate-limit backoff."""
+    """Minimal GitHub releases fetcher with caching.
 
-    BASE = "https://api.github.com"
+    Rate-limit and retry logic now lives in ``lucille.github.session.paginate``.
+    """
 
     def __init__(self, token: str, org: str, cache_dir: Optional[Path] = None):
         self.org = org
-        self.headers = {
-            "Authorization": f"token {token}",
-            "Accept": "application/vnd.github.v3+json",
-        }
+        self.session = create_github_session(token)
         self.cache_dir = cache_dir or (DEBRIS_DIR / "cfr_cache")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     def _cache_key(self, repo: str) -> Path:
         return self.cache_dir / f"releases__{self.org}__{repo}.json"
 
-    def _get(self, url: str, params: Dict) -> List[Any]:
-        results, page = [], 1
-        while True:
-            params["page"] = page
-            params["per_page"] = 100
-            for attempt in range(5):
-                try:
-                    resp = requests.get(url, headers=self.headers, params=params, timeout=30)
-                    if resp.status_code == 403 and "rate limit" in resp.text.lower():
-                        wait = 2 ** attempt * 30
-                        logger.warning(f"Rate limited — sleeping {wait}s")
-                        time.sleep(wait)
-                        continue
-                    resp.raise_for_status()
-                    break
-                except requests.exceptions.RequestException as e:
-                    if attempt == 4:
-                        raise
-                    time.sleep(2 ** attempt)
-            page_data = resp.json()
-            if not page_data:
-                break
-            results.extend(page_data)
-            if len(page_data) < 100:
-                break
-            page += 1
-        return results
-
     def fetch(self, repo: str, since: datetime) -> List[Dict]:
         """Return all releases for `repo` published on or after `since`."""
-        url = f"{self.BASE}/repos/{self.org}/{repo}/releases"
-        raw = self._get(url, {})
+        url = f"{GITHUB_API_BASE}/repos/{self.org}/{repo}/releases"
+        raw = list(paginate(self.session, url))
         releases = []
         for r in raw:
             if not r.get("published_at"):

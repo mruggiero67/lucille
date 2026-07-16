@@ -50,7 +50,12 @@ class TestGitHubMetricsExtractor(unittest.TestCase):
         self.assertEqual(self.extractor.org, "test-org")
         self.assertEqual(self.extractor.repo, "test-repo")
         self.assertEqual(self.extractor.base_url, "https://api.github.com")
-        self.assertIn("Authorization", self.extractor.headers)
+        # Auth header is set on the shared session created by
+        # ``create_github_session``. The old ``self.headers`` attribute was
+        # removed in favor of the session.
+        self.assertEqual(
+            self.extractor.session.headers["Authorization"], "token test_token"
+        )
 
     @patch("requests.Session.get")
     def test_make_request_success(self, mock_get):
@@ -65,59 +70,26 @@ class TestGitHubMetricsExtractor(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         mock_get.assert_called_once()
 
-    @patch("requests.Session.get")
-    @patch("time.sleep")
-    def test_make_request_rate_limit(self, mock_sleep, mock_get):
-        """Test API request with rate limiting"""
-        # First response: rate limited
-        rate_limited_response = Mock()
-        rate_limited_response.status_code = 403
-        rate_limited_response.headers = {
-            "X-RateLimit-Remaining": "0",
-            "X-RateLimit-Reset": str(
-                int((datetime.now() + timedelta(seconds=10)).timestamp())
-            ),
-        }
+    # Rate-limit handling used to live in ``_make_request``; it now lives
+    # in ``lucille.github.session.paginate`` and is covered by
+    # tests/test_github_session.py (see TestRateLimitAndRetries).
 
-        # Second response: successful
-        success_response = Mock()
-        success_response.status_code = 200
-        success_response.json.return_value = {"test": "data"}
+    @patch("lucille.github.fetch_analytics.paginate")
+    def test_paginated_request_delegates_to_shared_paginator(self, mock_paginate):
+        """``_paginated_request`` is a thin wrapper around ``paginate``."""
+        mock_paginate.return_value = iter([{"id": 1}, {"id": 2}, {"id": 3}])
 
-        mock_get.side_effect = [rate_limited_response, success_response]
-
-        response = self.extractor._make_request("https://api.github.com/test")
-
-        self.assertEqual(response.status_code, 200)
-        mock_sleep.assert_called_once()
-        self.assertEqual(mock_get.call_count, 2)
-
-    @patch("requests.Session.get")
-    def test_paginated_request(self, mock_get):
-        """Test paginated API requests"""
-        # First page
-        page1_response = Mock()
-        page1_response.status_code = 200
-        page1_response.json.return_value = [{"id": 1}, {"id": 2}]
-        page1_response.headers = {
-            "Link": '<https://api.github.com/test?page=2>; rel="next"'
-        }
-
-        # Second page
-        page2_response = Mock()
-        page2_response.status_code = 200
-        page2_response.json.return_value = [{"id": 3}]
-        page2_response.headers = {
-            "Link": '<https://api.github.com/test?page=1>; rel="prev"'
-        }
-
-        mock_get.side_effect = [page1_response, page2_response]
-
-        result = self.extractor._paginated_request("https://api.github.com/test")
+        result = self.extractor._paginated_request(
+            "https://api.github.com/test", {"state": "all"}
+        )
 
         self.assertEqual(len(result), 3)
         self.assertEqual(result[0]["id"], 1)
-        self.assertEqual(result[2]["id"], 3)
+        # Confirm session + url + params were forwarded.
+        call_args = mock_paginate.call_args
+        self.assertIs(call_args.args[0], self.extractor.session)
+        self.assertEqual(call_args.args[1], "https://api.github.com/test")
+        self.assertEqual(call_args.args[2], {"state": "all"})
 
     def test_parse_github_date_z_format(self):
         """Test parsing GitHub date with Z format"""
@@ -445,11 +417,13 @@ class TestIntegration(unittest.TestCase):
             }
         ]
         commits_response.headers = {}
+        commits_response.links = {}  # no next-page Link → paginator stops after page 1
 
         prs_response = Mock()
         prs_response.status_code = 200
         prs_response.json.return_value = []
         prs_response.headers = {}
+        prs_response.links = {}
 
         # Mock all the API calls
         mock_get.return_value = commits_response

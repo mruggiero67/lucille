@@ -18,69 +18,41 @@ from pandas import DataFrame
 import logging
 
 from lucille.github.github_utils import fetch_org_repos
+from lucille.github.session import GITHUB_API_BASE, create_github_session, paginate
 from lucille.common.config import load_yaml_config
 
 
 class GitHubPRAnalyzer:
     def __init__(self, token: str):
-        """
-        Initialize the analyzer with GitHub API credentials.
+        """Initialize the analyzer with GitHub API credentials.
 
         Args:
             token: GitHub personal access token
         """
         self.token = token
-        self.headers = {
-            "Authorization": f"token {token}",
-            "Accept": "application/vnd.github.v3+json",
-        }
+        self.session = create_github_session(token)
 
     def get_open_prs(self, org: str, repo: str) -> List[Dict[str, Any]]:
-        """
-        Fetch all open pull requests from a specific repository.
+        """Fetch all open pull requests from a specific repository.
 
         Args:
             org: Repository org (organization or username)
             repo: Repository name
 
         Returns:
-            List of pull request data dictionaries
+            List of pull request data dictionaries, each augmented with
+            ``repo_org`` and ``repo_name`` fields.
         """
-        prs = []
-        page = 1
-        per_page = 100
-        base_url = f"https://api.github.com/repos/{org}/{repo}"
-
-        while True:
-            url = f"{base_url}/pulls"
-            params = {
-                "state": "open",
-                "sort": "created",
-                "direction": "asc",
-                "page": page,
-                "per_page": per_page,
-            }
-
-            try:
-                response = requests.get(url, headers=self.headers, params=params)
-                response.raise_for_status()
-
-                page_prs = response.json()
-                if not page_prs:
-                    break
-
-                # Add repository info to each PR
-                for pr in page_prs:
-                    pr["repo_org"] = org
-                    pr["repo_name"] = repo
-
-                prs.extend(page_prs)
-                page += 1
-
-            except requests.exceptions.RequestException as e:
-                print(f"Error fetching PRs from {org}/{repo}: {e}")
-                return []
-
+        url = f"{GITHUB_API_BASE}/repos/{org}/{repo}/pulls"
+        params = {"state": "open", "sort": "created", "direction": "asc"}
+        try:
+            prs = list(paginate(self.session, url, params))
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching PRs from {org}/{repo}: {e}")
+            return []
+        for pr in prs:
+            pr["repo_org"] = org
+            pr["repo_name"] = repo
         return prs
 
     def calculate_pr_age(self, created_at: str) -> tuple:
@@ -115,10 +87,10 @@ class GitHubPRAnalyzer:
         Returns:
             Dictionary with review summary info
         """
-        url = f"https://api.github.com/repos/{org}/{repo}/pulls/{pr_number}/reviews"
+        url = f"{GITHUB_API_BASE}/repos/{org}/{repo}/pulls/{pr_number}/reviews"
 
         try:
-            response = requests.get(url, headers=self.headers)
+            response = self.session.get(url)
             response.raise_for_status()
             reviews = response.json()
 

@@ -1,4 +1,6 @@
 import requests
+
+from lucille.github.session import GITHUB_API_BASE, create_github_session, paginate
 import json
 import csv
 import pandas as pd
@@ -27,64 +29,23 @@ class GitHubMetricsExtractor:
         self.token = token
         self.org = org
         self.repo = repo
-        self.base_url = "https://api.github.com"
-        self.headers = {
-            "Authorization": f"token {token}",
-            "Accept": "application/vnd.github.v3+json",
-        }
-        self.session = requests.Session()
-        self.session.headers.update(self.headers)
+        self.base_url = GITHUB_API_BASE
+        self.session = create_github_session(token)
 
     def _make_request(self, url: str, params: Dict = None) -> requests.Response:
-        """Make API request with rate limit handling"""
+        """Make a single (non-paginated) API request. Kept for compatibility
+        with call sites that need the full ``Response`` object; rate-limit
+        handling is delegated to the shared paginator when possible.
+        """
         response = self.session.get(url, params=params)
-
-        # Handle rate limiting
-        if response.status_code == 403 and "X-RateLimit-Remaining" in response.headers:
-            if int(response.headers["X-RateLimit-Remaining"]) == 0:
-                reset_time = int(response.headers["X-RateLimit-Reset"])
-                sleep_time = reset_time - int(time.time()) + 10
-                print(f"Rate limit hit. Sleeping for {sleep_time} seconds...")
-                time.sleep(sleep_time)
-                response = self.session.get(url, params=params)
-
         response.raise_for_status()
         return response
 
     def _paginated_request(
         self, url: str, params: Dict = None, max_pages: int = None
     ) -> List[Dict]:
-        """Handle paginated API requests"""
-        all_data = []
-        page = 1
-
-        while True:
-            if max_pages and page > max_pages:
-                break
-
-            current_params = (params or {}).copy()
-            current_params["page"] = page
-            current_params["per_page"] = 100  # Max per page
-
-            response = self._make_request(url, current_params)
-            data = response.json()
-
-            if not data:  # Empty response means we're done
-                break
-
-            all_data.extend(data)
-            print(
-                f"Fetched page {page}, got {len(data)} items (total: {len(all_data)})"
-            )
-
-            # Check if there's a next page
-            link_header = response.headers.get("Link", "")
-            if 'rel="next"' not in link_header:
-                break
-
-            page += 1
-
-        return all_data
+        """Handle paginated API requests via the shared session paginator."""
+        return list(paginate(self.session, url, params, max_pages=max_pages))
 
     def get_commits(
         self, since_date: datetime, until_date: datetime = None

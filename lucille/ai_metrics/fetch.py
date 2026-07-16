@@ -8,17 +8,16 @@ from __future__ import annotations
 
 import json
 import logging
-import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
-logger = logging.getLogger(__name__)
+from lucille.github.session import GITHUB_API_BASE, create_github_session, paginate
 
-GITHUB_API_BASE = "https://api.github.com"
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -54,50 +53,6 @@ class PRRecord:
 
 
 # ---------------------------------------------------------------------------
-# HTTP helpers
-# ---------------------------------------------------------------------------
-
-
-def _github_session(token: str) -> requests.Session:
-    s = requests.Session()
-    s.headers.update({
-        "Authorization": f"token {token}",
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-    })
-    return s
-
-
-def _paginate(
-    session: requests.Session,
-    url: str,
-    params: Optional[Dict[str, Any]] = None,
-) -> Iterable[Any]:
-    """Yield items from a GitHub REST endpoint, following ``Link: rel=next``."""
-    params = dict(params or {})
-    params.setdefault("per_page", 100)
-    while url:
-        r = session.get(url, params=params, timeout=30)
-        _handle_rate_limit(r)
-        r.raise_for_status()
-        for item in r.json():
-            yield item
-        url = r.links.get("next", {}).get("url")
-        params = None  # subsequent requests use the absolute next URL
-
-
-def _handle_rate_limit(response: requests.Response) -> None:
-    """If we're within 5 requests of the limit, sleep until the reset."""
-    remaining = int(response.headers.get("X-RateLimit-Remaining", "5000"))
-    if remaining > 5:
-        return
-    reset = int(response.headers.get("X-RateLimit-Reset", "0"))
-    wait = max(0, reset - int(time.time())) + 5
-    logger.warning(f"GitHub rate limit low ({remaining} left); sleeping {wait}s")
-    time.sleep(wait)
-
-
-# ---------------------------------------------------------------------------
 # Datetime helpers
 # ---------------------------------------------------------------------------
 
@@ -124,9 +79,9 @@ def fetch_prs_since(
     """Fetch every PR in ``org/repo`` created on or after ``since``, any state."""
     logger.info(f"Fetching PRs from {org}/{repo} since {since.date()}")
     url = f"{GITHUB_API_BASE}/repos/{org}/{repo}/pulls"
-    params = {"state": "all", "sort": "created", "direction": "desc", "per_page": 100}
+    params = {"state": "all", "sort": "created", "direction": "desc"}
     result: List[Dict[str, Any]] = []
-    for pr in _paginate(session, url, params):
+    for pr in paginate(session, url, params):
         created = _parse_iso(pr.get("created_at"))
         if created is None:
             continue
@@ -152,7 +107,7 @@ def fetch_pr_commit_messages(
     url = f"{GITHUB_API_BASE}/repos/{org}/{repo}/pulls/{pr_number}/commits"
     messages: List[str] = []
     shas: List[str] = []
-    for c in _paginate(session, url):
+    for c in paginate(session, url):
         messages.append((c.get("commit") or {}).get("message", "") or "")
         shas.append(c.get("sha", ""))
     return messages, shas
@@ -215,7 +170,7 @@ def fetch_all_prs(
 
     Commits are fetched (once per PR) and included in the record.
     """
-    session = _github_session(token)
+    session = create_github_session(token)
     records: List[PRRecord] = []
     for repo in repos:
         raw_prs = fetch_prs_since(session, org, repo, since)
@@ -276,7 +231,7 @@ def resolve_reverted_prs(
         (outside the window) are looked up via one API call each.
     """
     from lucille.ai_metrics.detect import extract_reverted_shas
-    session = _github_session(token)
+    session = create_github_session(token)
     result: Dict[int, int] = {}
     for r in records:
         reverted_shas = extract_reverted_shas(r.commit_messages)
@@ -293,7 +248,6 @@ def resolve_reverted_prs(
             url = f"{GITHUB_API_BASE}/repos/{org_only}/{repo_only}/commits/{sha}/pulls"
             try:
                 resp = session.get(url, timeout=30)
-                _handle_rate_limit(resp)
                 if resp.status_code == 200:
                     pulls = resp.json()
                     if pulls:
