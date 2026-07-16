@@ -1,14 +1,18 @@
 """AI Metrics — measure the impact of AI-assistant use across GitHub + Jira.
 
 Outputs (all datestamped):
-  YYYY_MM_DD_ai_pr_metrics.csv        one row per PR (repo, number, ai_touched,
-                                      merged, reverted, ticket keys, ...)
-  YYYY_MM_DD_ai_ticket_metrics.csv    one row per Jira ticket linked to those
-                                      PRs (In Progress → Done cycle time)
-  YYYY_MM_DD_ai_metrics_summary.txt   headline numbers
-  YYYY_MM_DD_ai_metrics.png           4-panel figure: AI-share trend,
-                                      merge-rate compare, revert-rate compare,
-                                      cycle-time boxplot
+  YYYY_MM_DD_ai_pr_metrics.csv         one row per PR (repo, number, ai_touched,
+                                       merged, reverted, ticket keys, ...)
+  YYYY_MM_DD_ai_ticket_metrics.csv     one row per Jira ticket linked to those
+                                       PRs (In Progress → Done cycle time)
+  YYYY_MM_DD_ai_metrics_by_repo.csv    one row per repo (PR volume, AI share,
+                                       merge rate), sorted by AI share desc
+  YYYY_MM_DD_ai_metrics_summary.txt    headline numbers
+  YYYY_MM_DD_ai_metrics.png            4-panel figure: AI-share trend,
+                                       merge-rate compare, revert-rate compare,
+                                       cycle-time boxplot
+  YYYY_MM_DD_ai_metrics_top_repos.png  horizontal bar chart of top-N repos
+                                       by AI share (min-PR threshold applied)
 
 Usage:
     python -m lucille.ai_metrics.main --config ~/bin/github_config.yaml
@@ -28,12 +32,15 @@ import matplotlib.pyplot as plt
 
 from lucille.ai_metrics.analyze import (
     Ratio,
+    RepoRow,
     ai_touched_share,
+    by_repo_summary,
     compare_ticket_cycle_times,
     merge_rate,
     revert_rate,
     split_by_ai,
     summarize_bucket,
+    top_repos_by_ai_share,
     weekly_trend,
 )
 from lucille.ai_metrics.detect import (
@@ -164,6 +171,11 @@ TICKET_CSV_COLUMNS = [
     "ticket_key", "ai_touched", "started_at", "done_at", "cycle_time_days",
 ]
 
+REPO_CSV_COLUMNS = [
+    "repo", "prs_opened", "ai_touched", "human_only", "ai_share_pct",
+    "merged", "ai_merged", "merge_rate_pct",
+]
+
 
 def write_pr_csv(
     prs: Sequence[PRRecord],
@@ -219,6 +231,27 @@ def write_ticket_csv(
                     ),
                 })
     logger.info(f"Wrote {len(ai_cycles) + len(human_cycles)} ticket rows to {path}")
+
+
+def write_repo_csv(rows: Sequence[RepoRow], path: Path) -> None:
+    """Write per-repo aggregate metrics. Rows are already sorted by AI share desc."""
+    def _pct(x: Optional[float]) -> str:
+        return f"{x * 100:.1f}" if x is not None else ""
+    with path.open("w", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=REPO_CSV_COLUMNS)
+        writer.writeheader()
+        for r in rows:
+            writer.writerow({
+                "repo": r.repo,
+                "prs_opened": r.prs_opened,
+                "ai_touched": r.ai_touched,
+                "human_only": r.human_only,
+                "ai_share_pct": _pct(r.ai_share),
+                "merged": r.merged,
+                "ai_merged": r.ai_merged,
+                "merge_rate_pct": _pct(r.merge_rate),
+            })
+    logger.info(f"Wrote {len(rows)} repo rows to {path}")
 
 
 def build_summary(
@@ -363,6 +396,45 @@ def render_chart(
     logger.info(f"Wrote chart to {output_path}")
 
 
+def render_top_repos_chart(
+    top: Sequence[RepoRow],
+    min_prs: int,
+    output_path: Path,
+) -> None:
+    """Horizontal bar chart of the top-N repos by AI share."""
+    if not top:
+        logger.warning(
+            f"No repos with >= {min_prs} PRs; skipping top-repos chart"
+        )
+        return
+    # Reverse so the highest share sits at the top of the chart.
+    ordered = list(reversed(top))
+    fig, ax = plt.subplots(figsize=(10, max(4, 0.5 * len(ordered) + 2)))
+    labels = [r.repo.split("/", 1)[-1] for r in ordered]
+    values = [(r.ai_share or 0) * 100 for r in ordered]
+    bars = ax.barh(labels, values, color="#7B1FA2", alpha=0.85)
+    ax.set_xlabel("% of opened PRs that are AI-touched", fontweight="bold")
+    upper = max(100, max(values) * 1.15 if values else 100)
+    ax.set_xlim(0, upper)
+    ax.grid(axis="x", alpha=0.3, linestyle="--")
+    ax.set_title(
+        f"Top {len(ordered)} repos by AI adoption (min {min_prs} PRs)",
+        fontsize=13, fontweight="bold",
+    )
+    for bar, r in zip(bars, ordered):
+        share_pct = (r.ai_share or 0) * 100
+        ax.text(
+            bar.get_width() + upper * 0.01,
+            bar.get_y() + bar.get_height() / 2,
+            f"{share_pct:.0f}%  ({r.ai_touched}/{r.prs_opened})",
+            va="center", fontsize=9,
+        )
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    logger.info(f"Wrote top-repos chart to {output_path}")
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -384,6 +456,10 @@ def main() -> None:
                         help="Force full refresh; ignore ~/Desktop/debris/ai_metrics_cache")
     parser.add_argument("--skip-jira", action="store_true",
                         help="Skip Jira ticket cycle-time analysis")
+    parser.add_argument("--min-repo-prs", type=int, default=5,
+                        help="Minimum PRs for a repo to appear in the top-repos chart (default: 5)")
+    parser.add_argument("--top-repos", type=int, default=10,
+                        help="How many repos to show in the top-repos chart (default: 10)")
     args = parser.parse_args()
 
     gh_config = load_yaml_config(args.config)
@@ -447,6 +523,13 @@ def main() -> None:
     hu_days = [tc.cycle_time_days for tc in human_cycles.values() if tc.cycle_time_days is not None]
     render_chart(records, revert_map, ai_days, hu_days,
                  output_dir / f"{timestamp}_ai_metrics.png")
+
+    # Per-repo breakdown: full CSV of all repos, top-N chart.
+    repo_rows = by_repo_summary(records)
+    write_repo_csv(repo_rows, output_dir / f"{timestamp}_ai_metrics_by_repo.csv")
+    top = top_repos_by_ai_share(repo_rows, min_prs=args.min_repo_prs, limit=args.top_repos)
+    render_top_repos_chart(top, args.min_repo_prs,
+                           output_dir / f"{timestamp}_ai_metrics_top_repos.png")
 
 
 if __name__ == "__main__":

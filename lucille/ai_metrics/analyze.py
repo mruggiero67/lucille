@@ -133,6 +133,65 @@ def weekly_trend(prs: Sequence[PRRecord]) -> List[WeeklyRow]:
 
 
 # ---------------------------------------------------------------------------
+# Per-repo aggregation
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class RepoRow:
+    """One row per repository: PR volume + AI-adoption + merge stats."""
+    repo: str
+    prs_opened: int
+    ai_touched: int
+    human_only: int
+    ai_share: Optional[float]           # 0..1, or None if prs_opened == 0
+    merged: int
+    ai_merged: int
+    merge_rate: Optional[float]         # 0..1 over closed PRs
+
+
+def by_repo_summary(prs: Sequence[PRRecord]) -> List[RepoRow]:
+    """Aggregate PRs by repo. Result is sorted by AI share desc, then by
+    AI-touched count desc (as a tiebreaker so a busier repo outranks a
+    quieter one at the same share), then by repo name for stability.
+    """
+    by_repo: Dict[str, List[PRRecord]] = defaultdict(list)
+    for p in prs:
+        by_repo[p.repo].append(p)
+
+    rows: List[RepoRow] = []
+    for repo, r_prs in by_repo.items():
+        ai_prs, human_prs = split_by_ai(r_prs)
+        share = ai_touched_share(r_prs)
+        mr = merge_rate(r_prs)
+        rows.append(RepoRow(
+            repo=repo,
+            prs_opened=len(r_prs),
+            ai_touched=len(ai_prs),
+            human_only=len(human_prs),
+            ai_share=share.value,
+            merged=sum(1 for p in r_prs if p.merged),
+            ai_merged=sum(1 for p in ai_prs if p.merged),
+            merge_rate=mr.value,
+        ))
+    rows.sort(key=lambda r: (-(r.ai_share or 0), -r.ai_touched, r.repo))
+    return rows
+
+
+def top_repos_by_ai_share(
+    rows: Sequence[RepoRow],
+    *,
+    min_prs: int = 5,
+    limit: int = 10,
+) -> List[RepoRow]:
+    """Filter ``rows`` (from ``by_repo_summary``) to those with at least
+    ``min_prs`` PRs opened and return the top ``limit`` by AI share.
+    Rows below the threshold are silently excluded.
+    """
+    return [r for r in rows if r.prs_opened >= min_prs][:limit]
+
+
+# ---------------------------------------------------------------------------
 # Ticket-level aggregation
 # ---------------------------------------------------------------------------
 

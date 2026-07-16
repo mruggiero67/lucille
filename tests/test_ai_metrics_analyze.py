@@ -8,12 +8,14 @@ from context import lucille  # noqa: F401
 from lucille.ai_metrics.analyze import (
     Ratio,
     ai_touched_share,
+    by_repo_summary,
     compare_ticket_cycle_times,
     format_week,
     merge_rate,
     revert_rate,
     split_by_ai,
     summarize_bucket,
+    top_repos_by_ai_share,
     week_start,
     weekly_trend,
 )
@@ -27,9 +29,10 @@ def _pr(
     state: str = "closed",
     merged: bool = True,
     ai: bool = False,
+    repo: str = "org/repo",
 ) -> PRRecord:
     return PRRecord(
-        repo="org/repo",
+        repo=repo,
         number=number,
         title=f"PR #{number}",
         author_login="alice",
@@ -181,6 +184,90 @@ class TestSummarizeBucket:
     def test_single_value(self):
         b = summarize_bucket([7.5], "ai")
         assert b.median_days == 7.5 and b.p90_days == 7.5
+
+
+# ---------------------------------------------------------------------------
+# Per-repo aggregation
+# ---------------------------------------------------------------------------
+
+
+class TestByRepoSummary:
+    def test_one_row_per_repo(self):
+        prs = [
+            _pr(1, created=T0, ai=True,  repo="org/alpha"),
+            _pr(2, created=T0, ai=False, repo="org/alpha"),
+            _pr(3, created=T0, ai=True,  repo="org/beta"),
+        ]
+        rows = by_repo_summary(prs)
+        assert [r.repo for r in rows] == ["org/beta", "org/alpha"]  # beta 100% > alpha 50%
+
+    def test_ai_share_computed(self):
+        prs = [
+            _pr(1, created=T0, ai=True,  repo="org/alpha"),
+            _pr(2, created=T0, ai=True,  repo="org/alpha"),
+            _pr(3, created=T0, ai=False, repo="org/alpha"),
+            _pr(4, created=T0, ai=False, repo="org/beta"),
+        ]
+        rows = {r.repo: r for r in by_repo_summary(prs)}
+        assert rows["org/alpha"].ai_share == pytest.approx(2/3)
+        assert rows["org/alpha"].ai_touched == 2
+        assert rows["org/alpha"].human_only == 1
+        assert rows["org/beta"].ai_share == 0.0
+
+    def test_sort_tiebreak_by_ai_touched_count(self):
+        # Two repos, both 100% AI; the busier one should come first.
+        prs = [
+            _pr(1, created=T0, ai=True, repo="org/small"),
+            _pr(2, created=T0, ai=True, repo="org/big"),
+            _pr(3, created=T0, ai=True, repo="org/big"),
+            _pr(4, created=T0, ai=True, repo="org/big"),
+        ]
+        rows = by_repo_summary(prs)
+        assert [r.repo for r in rows] == ["org/big", "org/small"]
+
+    def test_merge_rate_per_repo(self):
+        prs = [
+            _pr(1, created=T0, ai=True,  merged=True,  repo="org/alpha"),
+            _pr(2, created=T0, ai=False, merged=False, repo="org/alpha"),
+        ]
+        row = by_repo_summary(prs)[0]
+        # 1 merged / 2 closed
+        assert row.merge_rate == pytest.approx(0.5)
+        assert row.merged == 1
+        assert row.ai_merged == 1
+
+    def test_empty_input(self):
+        assert by_repo_summary([]) == []
+
+
+class TestTopReposByAiShare:
+    def test_min_prs_filters_out_noise(self):
+        prs = [
+            _pr(1, created=T0, ai=True, repo="org/tiny"),          # 1 PR, 100% AI
+            *[_pr(i, created=T0, ai=(i % 2 == 0), repo="org/big")  # 10 PRs, 50% AI
+              for i in range(10, 20)],
+        ]
+        rows = by_repo_summary(prs)
+        top = top_repos_by_ai_share(rows, min_prs=5)
+        # tiny is filtered out, only big remains
+        assert [r.repo for r in top] == ["org/big"]
+
+    def test_limit(self):
+        prs = []
+        for r in range(15):
+            prs.extend(
+                _pr(r * 100 + i, created=T0, ai=(i < 3), repo=f"org/r{r:02d}")
+                for i in range(5)
+            )
+        rows = by_repo_summary(prs)
+        top = top_repos_by_ai_share(rows, min_prs=5, limit=10)
+        assert len(top) == 10
+
+    def test_defaults(self):
+        # A repo with exactly 5 PRs should qualify at the default threshold.
+        prs = [_pr(i, created=T0, ai=True, repo="org/x") for i in range(5)]
+        rows = by_repo_summary(prs)
+        assert len(top_repos_by_ai_share(rows)) == 1
 
 
 class TestCompareTicketCycleTimes:
