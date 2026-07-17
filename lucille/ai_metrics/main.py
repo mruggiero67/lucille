@@ -35,9 +35,11 @@ from lucille.ai_metrics.analyze import (
     RepoRow,
     ai_touched_share,
     by_repo_summary,
+    chart_worthy_weeks,
     compare_ticket_cycle_times,
     merge_rate,
     revert_rate,
+    snap_to_monday,
     split_by_ai,
     summarize_bucket,
     top_repos_by_ai_share,
@@ -282,6 +284,10 @@ def build_summary(
     ai_linked = Ratio(sum(1 for p in ai_prs if p.ticket_keys), len(ai_prs))
     hu_linked = Ratio(sum(1 for p in human_prs if p.ticket_keys), len(human_prs))
 
+    # Deliberately terse: merge-rate / revert-rate / linkability /
+    # cycle-time all live in the CSVs and the chart. The summary's job
+    # is the one-glance headline: how big was the window, how many PRs
+    # did we see, how many of them were AI-touched.
     lines = [
         f"AI-Metrics Report",
         f"Window: {since.date()} — {until.date()} ({(until - since).days} days)",
@@ -290,39 +296,23 @@ def build_summary(
         f"PRs opened in window: {len(prs)}",
         f"  AI-touched: {ai_share.numerator} ({ai_share.as_percent()})",
         f"  Human-only: {len(human_prs)}",
-        "",
-        f"Merge rate:",
-        f"  Overall: {overall_merge.as_percent()}  ({overall_merge.numerator}/{overall_merge.denominator})",
-        f"  AI PRs:  {ai_merge.as_percent()}  ({ai_merge.numerator}/{ai_merge.denominator})",
-        f"  Humans:  {hu_merge.as_percent()}  ({hu_merge.numerator}/{hu_merge.denominator})",
-        "",
-        f"Revert rate (merged PRs reverted later):",
-        f"  Overall: {overall_revert.as_percent()}  ({overall_revert.numerator}/{overall_revert.denominator})",
-        f"  AI PRs:  {ai_revert.as_percent()}  ({ai_revert.numerator}/{ai_revert.denominator})",
-        f"  Humans:  {hu_revert.as_percent()}  ({hu_revert.numerator}/{hu_revert.denominator})",
-        "",
-        f"PR → Jira linkability (share of PRs with an extractable ticket key):",
-        f"  AI PRs: {ai_linked.as_percent()}  ({ai_linked.numerator}/{ai_linked.denominator})",
-        f"  Humans: {hu_linked.as_percent()}  ({hu_linked.numerator}/{hu_linked.denominator})",
-        f"  (Big gap here means the cycle-time comparison below is biased —",
-        f"   we're comparing PR populations with different linkage rates.)",
-        "",
-        f"Ticket cycle time (In Progress → Done):",
     ]
-    for b in (ai_bucket, hu_bucket):
-        if b.n == 0:
-            lines.append(f"  {b.label:6s}: n=0 (no data)")
-        else:
-            lines.append(
-                f"  {b.label:6s}: n={b.n:<4d} median={b.median_days:.1f}d  "
-                f"mean={b.mean_days:.1f}d  p90={b.p90_days:.1f}d"
-            )
+    # Bind vars we no longer render to _ so linters don't complain about
+    # 'unused' locals from the callers above.
+    _ = (overall_merge, ai_merge, hu_merge, overall_revert, ai_revert,
+         hu_revert, ai_linked, hu_linked, ai_bucket, hu_bucket)
     return lines
 
 
 # ---------------------------------------------------------------------------
 # Chart
 # ---------------------------------------------------------------------------
+
+
+# Weekly trend points below this PR count are dropped from the chart:
+# with a handful of PRs a single AI-touched PR reads as 100%, which
+# over-weights the eye. The full data is still in the CSV.
+MIN_WEEKLY_PRS_FOR_CHART = 10
 
 
 def render_chart(
@@ -332,7 +322,7 @@ def render_chart(
     hu_days: List[float],
     output_path: Path,
 ) -> None:
-    weekly = weekly_trend(prs)
+    weekly = chart_worthy_weeks(weekly_trend(prs), MIN_WEEKLY_PRS_FOR_CHART)
     fig, axes = plt.subplots(2, 2, figsize=(14, 9))
 
     # (1) AI-touched share, weekly trend
@@ -345,7 +335,11 @@ def render_chart(
         ax.set_ylim(0, max(100, max(shares) * 1.1))
         ax.grid(alpha=0.3, linestyle="--")
         ax.tick_params(axis="x", rotation=45)
-    ax.set_title("Weekly % of PRs that are AI-touched")
+    ax.set_title(
+        f"Weekly % of PRs that are AI-touched\n"
+        f"(weeks with <{MIN_WEEKLY_PRS_FOR_CHART} PRs suppressed)",
+        fontsize=11,
+    )
 
     # (2) Merge rate: AI vs Human
     ax = axes[0][1]
@@ -384,7 +378,9 @@ def render_chart(
     # (4) Cycle-time boxplot
     ax = axes[1][1]
     box_data = [d for d in (ai_days, hu_days)]
-    ax.boxplot(box_data, labels=["AI", "Human"], showfliers=False)
+    # ``tick_labels`` replaced ``labels`` in matplotlib 3.9; the old name
+    # emits a DeprecationWarning and will disappear in 3.11.
+    ax.boxplot(box_data, tick_labels=["AI", "Human"], showfliers=False)
     ax.set_ylabel("Cycle time (days)")
     ax.grid(axis="y", alpha=0.3, linestyle="--")
     ax.set_title("Ticket cycle time: AI vs Human (In Progress → Done)")
@@ -472,8 +468,16 @@ def main() -> None:
     logger.info(f"Scanning {len(repos)} repos in {org}")
 
     until = datetime.now(timezone.utc)
-    since = until - timedelta(days=args.days)
-    logger.info(f"Window: {since.date()} → {until.date()}")
+    raw_since = until - timedelta(days=args.days)
+    # Snap the window start back to Monday 00:00 UTC so the weekly-trend
+    # chart doesn't have a partial edge-week that reads as an outlier
+    # (a single PR in a 1-day 'week' looks like 100% AI-touched).
+    since = snap_to_monday(raw_since)
+    span_days = (until.date() - since.date()).days
+    logger.info(
+        f"Window: {since.date()} → {until.date()} "
+        f"({span_days} days; snapped to Monday from {raw_since.date()})"
+    )
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

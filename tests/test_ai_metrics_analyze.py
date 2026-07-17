@@ -9,10 +9,12 @@ from lucille.ai_metrics.analyze import (
     Ratio,
     ai_touched_share,
     by_repo_summary,
+    chart_worthy_weeks,
     compare_ticket_cycle_times,
     format_week,
     merge_rate,
     revert_rate,
+    snap_to_monday,
     split_by_ai,
     summarize_bucket,
     top_repos_by_ai_share,
@@ -275,3 +277,86 @@ class TestCompareTicketCycleTimes:
         ai, human = compare_ticket_cycle_times([1.0, 2.0, 3.0], [10.0, 20.0])
         assert ai.label == "ai" and ai.n == 3
         assert human.label == "human" and human.n == 2
+
+
+# ---------------------------------------------------------------------------
+# snap_to_monday
+# ---------------------------------------------------------------------------
+
+
+class TestSnapToMonday:
+    def test_monday_snaps_to_itself_midnight(self):
+        # 2026-04-13 is a Monday.
+        d = datetime(2026, 4, 13, 15, 30, tzinfo=timezone.utc)
+        out = snap_to_monday(d)
+        assert out.year == 2026 and out.month == 4 and out.day == 13
+        assert out.hour == 0 and out.minute == 0
+
+    def test_sunday_snaps_back_six_days_to_previous_monday(self):
+        # 2026-04-19 is a Sunday. Snap back to 2026-04-13 (Monday).
+        d = datetime(2026, 4, 19, 23, 59, tzinfo=timezone.utc)
+        out = snap_to_monday(d)
+        assert out.day == 13
+
+    def test_saturday_snaps_back_five_days(self):
+        # 2026-04-18 is a Saturday.
+        d = datetime(2026, 4, 18, 10, tzinfo=timezone.utc)
+        out = snap_to_monday(d)
+        assert out.day == 13
+
+    def test_preserves_timezone(self):
+        d = datetime(2026, 4, 18, tzinfo=timezone.utc)
+        assert snap_to_monday(d).tzinfo == timezone.utc
+
+    def test_only_snaps_backward(self):
+        # No matter what day of the week, the snapped date is <= the input.
+        for day in range(13, 20):  # Mon 2026-04-13 through Sun 2026-04-19
+            d = datetime(2026, 4, day, 12, tzinfo=timezone.utc)
+            assert snap_to_monday(d).date() <= d.date()
+
+
+# ---------------------------------------------------------------------------
+# chart_worthy_weeks
+# ---------------------------------------------------------------------------
+
+
+class TestChartWorthyWeeks:
+    def _rows_with_counts(self, counts):
+        """Build weekly rows via weekly_trend from synthetic PR counts.
+
+        ``counts[i]`` is the number of PRs to place in the i-th week,
+        starting from Monday 2026-04-13. Each PR is placed at noon UTC
+        on that week's Monday to keep the fixture simple.
+        """
+        from datetime import timedelta
+        first_monday = datetime(2026, 4, 13, 12, tzinfo=timezone.utc)
+        prs = []
+        for week_i, n in enumerate(counts):
+            when = first_monday + timedelta(weeks=week_i)
+            for _ in range(n):
+                prs.append(_pr(number=len(prs), repo="r", created=when))
+        return weekly_trend(prs)
+
+    def test_filters_out_low_count_weeks(self):
+        rows = self._rows_with_counts([1, 20, 3, 15])
+        kept = chart_worthy_weeks(rows, min_prs=10)
+        assert [r.prs_opened for r in kept] == [20, 15]
+
+    def test_threshold_boundary_is_inclusive(self):
+        rows = self._rows_with_counts([9, 10, 11])
+        kept = chart_worthy_weeks(rows, min_prs=10)
+        assert [r.prs_opened for r in kept] == [10, 11]
+
+    def test_zero_threshold_keeps_all(self):
+        rows = self._rows_with_counts([1, 2, 3])
+        assert len(chart_worthy_weeks(rows, min_prs=0)) == 3
+
+    def test_empty_input_returns_empty_list(self):
+        assert chart_worthy_weeks([], min_prs=5) == []
+
+    def test_preserves_row_order(self):
+        # weekly_trend returns chronological order; the filter must not
+        # perturb it.
+        rows = self._rows_with_counts([15, 3, 20, 5, 30])
+        kept = chart_worthy_weeks(rows, min_prs=10)
+        assert [r.prs_opened for r in kept] == [15, 20, 30]

@@ -23,6 +23,21 @@ def week_start(dt: datetime) -> date:
     return d - timedelta(days=d.weekday())
 
 
+def snap_to_monday(dt: datetime) -> datetime:
+    """Return ``dt`` snapped *backward* to Monday 00:00 of its ISO week.
+
+    Used to align the analysis window with ISO week boundaries so the
+    weekly trend chart doesn't have a partial edge-week (which produces
+    misleading small-N points — e.g. a single PR reading as 100%).
+
+    We snap backward rather than forward so the caller gets *at least*
+    the number of days they asked for; asking for 90 days may yield up
+    to 96, never less.
+    """
+    monday = week_start(dt)
+    return datetime(monday.year, monday.month, monday.day, tzinfo=dt.tzinfo)
+
+
 def format_week(d: date) -> str:
     """Chart-friendly week label like ``"2026-W15"``."""
     iso_year, iso_week, _ = d.isocalendar()
@@ -130,6 +145,22 @@ def weekly_trend(prs: Sequence[PRRecord]) -> List[WeeklyRow]:
             human_merge_rate=merge_hu.value,
         ))
     return rows
+
+
+def chart_worthy_weeks(
+    rows: Sequence["WeeklyRow"], min_prs: int
+) -> List["WeeklyRow"]:
+    """Return only the weeks with enough PRs to be worth charting.
+
+    A week with a handful of PRs produces very noisy share numbers — a
+    single AI-touched PR in a slow week reads as 100%, which the eye
+    over-weights. This filter suppresses those points so the trend line
+    reflects real signal.
+
+    ``weekly_trend`` still returns every week (so the CSV can carry the
+    full record); it's only the chart that skips low-N weeks.
+    """
+    return [r for r in rows if r.prs_opened >= min_prs]
 
 
 # ---------------------------------------------------------------------------
