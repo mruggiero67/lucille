@@ -343,6 +343,57 @@ def collect_images(output_dir):
 # Date helper
 # ---------------------------------------------------------------------------
 
+def publish_page(client, title, body, images, *, parent_id=None):
+    """Publish a page with images, in an order that doesn't break image refs.
+
+    The wrong order (used before 2026-07): set the body first, then
+    upload attachments. Confluence re-renders the page on body update,
+    and if the referenced attachments don't exist yet it caches the
+    render with broken image icons. That cached broken HTML keeps
+    getting served until the cache invalidates, so images stay broken
+    even after uploads finish.
+
+    The right order:
+
+      1. Ensure the page exists (create with a placeholder body if new,
+         so we have a page_id to attach files to).
+      2. Upload every attachment.
+      3. Set the real body — by which time all referenced attachments
+         exist, so the render cache is populated correctly.
+
+    Args:
+        client:    A ``ConfluenceClient`` (or duck-typed test double).
+        title:     Page title.
+        body:      Full storage-format HTML for the page.
+        images:    Iterable of ``Path`` to attach.
+        parent_id: Confluence page ID to nest under when creating.
+    """
+    existing = client.find_page(title)
+    if existing:
+        page_id = existing["id"]
+        starting_version = existing["version"]["number"]
+        print(f"Found existing page (id={page_id}, version={starting_version})")
+    else:
+        # Create with an empty placeholder so we get a page_id. The real
+        # body is applied via update_page below, after attachments land.
+        print(f"Creating new page under parent")
+        placeholder = "<p>Publishing…</p>"
+        result = client.create_page(title, placeholder, parent_id=parent_id)
+        page_id = result["id"]
+        # New pages start at version 1; update_page will bump to 2.
+        starting_version = 1
+
+    images = list(images)  # allow len() + reiteration if caller passed a generator
+    print(f"Uploading {len(images)} image(s) before setting body...")
+    for img in images:
+        fname = client.upload_attachment(page_id, img)
+        print(f"  ✓ {fname}")
+
+    print(f"Setting page body (version {starting_version + 1})")
+    client.update_page(page_id, title, body, starting_version)
+    return page_id
+
+
 def next_monday():
     """Return the next Monday (or today if it's Monday) as YYYY-MM-DD."""
     today = date.today()
@@ -410,27 +461,11 @@ def main():
     parent_id = parent["id"]
     print(f"Found parent page: {config['CONFLUENCE_PARENT_PAGE_TITLE']} (id={parent_id})")
 
-    # Create or update the page
-    existing = client.find_page(title)
-    if existing:
-        page_id = existing["id"]
-        version = existing["version"]["number"]
-        print(f"Updating existing page (id={page_id}, version={version})")
-        client.update_page(page_id, title, body, version)
-    else:
-        print(f"Creating new page under parent")
-        result = client.create_page(title, body, parent_id=parent_id)
-        page_id = result["id"]
-
-    # Upload all images as attachments
     images = collect_images(args.output_dir)
-    print(f"Uploading {len(images)} image(s)...")
-    for img in images:
-        fname = client.upload_attachment(page_id, img)
-        print(f"  ✓ {fname}")
+    publish_page(client, title, body, images, parent_id=parent_id)
 
-    page_url = f"{config['CONFLUENCE_BASE_URL']}/spaces/{config['CONFLUENCE_SPACE_KEY']}/pages/{page_id}"
-    print(f"\nDone! Page: {page_url}")
+    page_url = f"{config['CONFLUENCE_BASE_URL']}/spaces/{config['CONFLUENCE_SPACE_KEY']}"
+    print(f"\nDone! Space: {page_url}")
 
 
 if __name__ == "__main__":
