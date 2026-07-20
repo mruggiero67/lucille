@@ -51,7 +51,7 @@ support:
 	python -m lucille.jira.sup_cycle_time --c ~/bin/jira.yaml --o $(2X2_DIR)/support
 	python -m lucille.jira.sup_ticket_volume --c ~/bin/jira.yaml --o $(2X2_DIR)/support
 
-2x2: deployments opsgenie github_security support lead_time publish
+2x2: deployments opsgenie github_security support ai_metrics lead_time publish
 
 cost:
 	python -m lucille.jira.epic_effort_summary --days 30 --output-dir ~/Desktop/debris --config ~/bin/jira.yaml
