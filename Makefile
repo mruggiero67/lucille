@@ -10,6 +10,7 @@ deployments:
 opsgenie:
 	python -m lucille.opsgenie_graph -c ~/bin/graphs.yaml -f ~/Desktop/debris/$(DATE_PREFIX)_opsgenie.csv
 	python -m lucille.opsgenie_alerts_chart_weeks --csv ~/Desktop/debris/$(DATE_PREFIX)_opsgenie.csv --weeks 6 --output $(2X2_DIR)/opsgenie/$(DATE_PREFIX)_opsgenie_alerts_last_6_weeks.png
+	python -m lucille.opsgenie.main --csv ~/Desktop/debris/$(DATE_PREFIX)_opsgenie.csv --config ~/bin/graphs.yaml
 
 # Vendor spend (AWS, Databricks, Datadog). AWS Cost Explorer auth uses the
 # standard boto3 credential chain (~/.aws/credentials by default).
