@@ -32,10 +32,11 @@ import matplotlib.pyplot as plt
 
 from lucille.common.config import load_yaml_config
 from lucille.common.logging import setup_logging
-from lucille.opsgenie.io import load_alerts
+from lucille.opsgenie.io import Alert, load_alerts
 from lucille.opsgenie.noise import (
     NoiseRow,
     NoiseSummary,
+    coarse_alias,
     compute_noise_rows,
     filter_by_min_fires,
     summarize,
@@ -55,18 +56,48 @@ _MAX_LABEL_LEN = 60  # truncate long aliases in the chart y-axis
 # ---------------------------------------------------------------------------
 
 
-def write_ranked_csv(rows: Sequence[NoiseRow], out_path: Path) -> None:
+def _count_raw_aliases_per_coarse_key(alerts: Sequence[Alert]) -> "dict[str, int]":
+    """For each coarse key, how many distinct raw aliases collapse into it.
+
+    Exposed as the ``raw_aliases_merged`` column in the coarse CSV so a
+    reader can see the coarsening's effect at a glance (e.g. one Datadog
+    ``monitor_id`` collapsing 27 per-job fragments into a single row).
+    """
+    buckets: "dict[str, set]" = {}
+    for a in alerts:
+        buckets.setdefault(coarse_alias(a.alias), set()).add(a.alias)
+    return {k: len(v) for k, v in buckets.items()}
+
+
+def write_ranked_csv(
+    rows: Sequence[NoiseRow],
+    out_path: Path,
+    *,
+    key_column: str = "alias",
+    raw_aliases_merged: "dict[str, int] | None" = None,
+) -> None:
     """Write the ranked noise report to CSV.
 
     Columns are chosen for what an on-call engineer would sort/filter by
     when triaging: fire count, ack rate, days active, teams, and enough
     of the message to identify what's firing.
+
+    ``key_column`` names the first column — ``"alias"`` for the raw view
+    (default) or ``"coarse_key"`` for the Datadog-collapsed view.
+
+    When ``raw_aliases_merged`` is provided, a ``raw_aliases_merged``
+    column is emitted after the key column showing how many distinct raw
+    aliases each coarse key collapses. Only meaningful for the coarse
+    view; leave ``None`` for the raw view.
     """
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    include_merged = raw_aliases_merged is not None
     with open(out_path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow([
-            "alias",
+        header = [key_column]
+        if include_merged:
+            header.append("raw_aliases_merged")
+        header.extend([
             "sample_message",
             "fires",
             "ack_count",
@@ -79,9 +110,12 @@ def write_ranked_csv(rows: Sequence[NoiseRow], out_path: Path) -> None:
             "last_seen",
             "teams",
         ])
+        w.writerow(header)
         for r in rows:
-            w.writerow([
-                r.alias,
+            row_out = [r.alias]
+            if include_merged:
+                row_out.append(raw_aliases_merged.get(r.alias, 1))
+            row_out.extend([
                 r.sample_message,
                 r.fires,
                 r.ack_count,
@@ -94,6 +128,7 @@ def write_ranked_csv(rows: Sequence[NoiseRow], out_path: Path) -> None:
                 r.last_seen.isoformat(),
                 r.teams,
             ])
+            w.writerow(row_out)
     logger.info(f"Wrote ranked CSV: {out_path} ({len(rows)} rows)")
 
 
@@ -180,8 +215,19 @@ def render_summary(
     summary: NoiseSummary,
     rows: Sequence[NoiseRow],
     out_path: Path,
+    *,
+    coarse_summary: "NoiseSummary | None" = None,
+    coarse_rows: "Sequence[NoiseRow] | None" = None,
 ) -> None:
-    """Write a plain-text summary suitable for pasting into a chat/email."""
+    """Write a plain-text summary suitable for pasting into a chat/email.
+
+    When ``coarse_summary`` and ``coarse_rows`` are provided, a second
+    section is appended showing the same Pareto numbers and top-10 list
+    computed against the Datadog-collapsed view. This is where the
+    coarse grouping earns its keep: on real data the raw top-5 is often
+    ~3% of volume (aliases fragment per instance) while the coarse
+    top-5 climbs sharply because same-monitor fragments merge.
+    """
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     lines: List[str] = []
@@ -196,6 +242,11 @@ def render_summary(
         )
     lines.append(f"Total alerts:              {summary.total_alerts:,}")
     lines.append(f"Unique monitors (aliases): {summary.unique_aliases:,}")
+    if coarse_summary is not None:
+        lines.append(
+            f"Unique monitors (coarse):  {coarse_summary.unique_aliases:,}  "
+            f"(after collapsing Datadog monitor_id fragments)"
+        )
     lines.append(f"Overall ack rate:          {summary.overall_ack_rate * 100:.1f}%")
     lines.append(
         f"Auto-closed w/o ack:       "
@@ -203,16 +254,42 @@ def render_summary(
         f"(the noise floor)"
     )
     lines.append("")
-    lines.append("Concentration (Pareto check):")
+    lines.append("Concentration (Pareto check) \u2014 raw aliases:")
     lines.append(f"  Top 5 aliases  \u2192 {summary.top_5_share * 100:.1f}% of all volume")
     lines.append(f"  Top 10 aliases \u2192 {summary.top_10_share * 100:.1f}% of all volume")
     lines.append(f"  Top 20 aliases \u2192 {summary.top_20_share * 100:.1f}% of all volume")
+
+    if coarse_summary is not None:
+        lines.append("")
+        lines.append("Concentration (Pareto check) \u2014 coarse (Datadog monitor_id):")
+        lines.append(
+            f"  Top 5 monitors  \u2192 {coarse_summary.top_5_share * 100:.1f}% of all volume"
+        )
+        lines.append(
+            f"  Top 10 monitors \u2192 {coarse_summary.top_10_share * 100:.1f}% of all volume"
+        )
+        lines.append(
+            f"  Top 20 monitors \u2192 {coarse_summary.top_20_share * 100:.1f}% of all volume"
+        )
     lines.append("")
 
     if rows:
-        lines.append(f"Top {min(len(rows), 10)} noisiest monitors:")
+        lines.append(f"Top {min(len(rows), 10)} noisiest monitors (raw):")
         lines.append("-" * 60)
         for i, r in enumerate(rows[:10], start=1):
+            label = _short_label(r.alias, r.sample_message)
+            lines.append(
+                f"  {i:2}. {r.fires:4} fires  "
+                f"ack {r.ack_rate * 100:5.1f}%  "
+                f"days {r.days_active:3}  "
+                f"{label}"
+            )
+
+    if coarse_rows:
+        lines.append("")
+        lines.append(f"Top {min(len(coarse_rows), 10)} noisiest monitors (coarse):")
+        lines.append("-" * 60)
+        for i, r in enumerate(coarse_rows[:10], start=1):
             label = _short_label(r.alias, r.sample_message)
             lines.append(
                 f"  {i:2}. {r.fires:4} fires  "
@@ -264,11 +341,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     alerts = load_alerts(args.csv)
     logger.info(f"Loaded {len(alerts):,} alerts")
 
+    # Raw view: group by OpsGenie's Alias verbatim.
     all_rows = compute_noise_rows(alerts)
     ranked_rows = filter_by_min_fires(all_rows, args.min_fires)
     top_rows = top_n(ranked_rows, args.top_n)
-
     summary = summarize(alerts, all_rows)
+
+    # Coarse view: collapse Datadog monitor_id fragments so same-monitor
+    # rows merge. Non-Datadog aliases (UUIDs from other integrations)
+    # pass through unchanged.
+    all_rows_coarse = compute_noise_rows(alerts, key_fn=lambda a: coarse_alias(a.alias))
+    ranked_rows_coarse = filter_by_min_fires(all_rows_coarse, args.min_fires)
+    top_rows_coarse = top_n(ranked_rows_coarse, args.top_n)
+    summary_coarse = summarize(alerts, all_rows_coarse)
+    raw_per_coarse = _count_raw_aliases_per_coarse_key(alerts)
+
     window_days = (
         (summary.window_end - summary.window_start).days + 1
         if summary.window_start and summary.window_end
@@ -278,10 +365,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     csv_path = out_dir / f"{date_prefix}_opsgenie_noise_ranked.csv"
     png_path = out_dir / f"{date_prefix}_opsgenie_noise_top_{args.top_n}.png"
     txt_path = out_dir / f"{date_prefix}_opsgenie_noise_summary.txt"
+    csv_path_coarse = out_dir / f"{date_prefix}_opsgenie_noise_ranked_coarse.csv"
+    png_path_coarse = out_dir / f"{date_prefix}_opsgenie_noise_top_{args.top_n}_coarse.png"
 
     write_ranked_csv(ranked_rows, csv_path)
+    write_ranked_csv(
+        ranked_rows_coarse, csv_path_coarse,
+        key_column="coarse_key",
+        raw_aliases_merged=raw_per_coarse,
+    )
     render_top_n_chart(top_rows, png_path, summary.total_alerts, window_days)
-    render_summary(summary, ranked_rows, txt_path)
+    render_top_n_chart(
+        top_rows_coarse, png_path_coarse, summary.total_alerts, window_days,
+    )
+    render_summary(
+        summary, ranked_rows, txt_path,
+        coarse_summary=summary_coarse, coarse_rows=ranked_rows_coarse,
+    )
 
     # Terminal-friendly synopsis so the operator sees the punchline
     # without opening the summary file.
@@ -293,8 +393,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     print(f"  Ack rate: {summary.overall_ack_rate * 100:.1f}%")
     print(
-        f"  Top 5 monitors produce "
-        f"{summary.top_5_share * 100:.1f}% of all volume"
+        f"  Top 5 raw aliases produce  {summary.top_5_share * 100:5.1f}% of all volume"
+    )
+    print(
+        f"  Top 5 coarse monitors     {summary_coarse.top_5_share * 100:5.1f}% "
+        f"of all volume  (\u2190 the real Pareto)"
     )
     print(f"  Full report:  {txt_path}")
     return 0

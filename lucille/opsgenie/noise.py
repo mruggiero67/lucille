@@ -19,7 +19,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Iterable, List, Optional, Sequence, Set
+from typing import Callable, Iterable, List, Optional, Sequence, Set
 
 from lucille.opsgenie.io import Alert
 
@@ -65,6 +65,41 @@ class NoiseSummary:
 # ---------------------------------------------------------------------------
 
 
+def coarse_alias(raw: str) -> str:
+    """Collapse per-instance tags off Datadog aliases; pass others through.
+
+    Datadog OpsGenie aliases look like::
+
+        org_id:305115|metric:X|monitor_id:143823196|#job:foo,env:prod-us
+
+    A single logical monitor fragments into dozens of rows because the
+    trailing ``#tag`` list varies per firing instance (per-job, per-host,
+    per-service). The ``monitor_id`` is Datadog's stable identifier for
+    the monitor object itself, so collapsing on it merges all fragments
+    of the same underlying monitor.
+
+    Non-Datadog aliases — typically opaque UUIDs from other integrations
+    — pass through unchanged, because for those the whole alias *is* the
+    identifier and there's nothing to collapse.
+
+    Malformed inputs (blank, no ``monitor_id:`` segment, non-numeric id)
+    also pass through: better to preserve the raw alias than to silently
+    misgroup unrelated alerts under a synthetic key.
+    """
+    if not raw or "monitor_id:" not in raw:
+        return raw
+    for part in raw.split("|"):
+        part = part.strip()
+        if part.startswith("monitor_id:"):
+            # ``monitor_id`` may be followed by a comma-joined sub-tag list
+            # in some exports; take just the id itself.
+            mid = part[len("monitor_id:"):].split(",")[0].strip()
+            if mid.isdigit():
+                return f"dd:monitor_{mid}"
+            break
+    return raw
+
+
 def group_by_alias(alerts: Iterable[Alert]) -> "dict[str, List[Alert]]":
     """Return alerts bucketed by ``alias``. Alerts with no alias go to ``\"\"``."""
     groups: "dict[str, List[Alert]]" = defaultdict(list)
@@ -73,13 +108,28 @@ def group_by_alias(alerts: Iterable[Alert]) -> "dict[str, List[Alert]]":
     return dict(groups)
 
 
-def compute_noise_rows(alerts: Sequence[Alert]) -> List[NoiseRow]:
-    """Compute a ``NoiseRow`` per alias, sorted by fire count desc.
+def compute_noise_rows(
+    alerts: Sequence[Alert],
+    *,
+    key_fn: Optional[Callable[[Alert], str]] = None,
+) -> List[NoiseRow]:
+    """Compute a ``NoiseRow`` per group, sorted by fire count desc.
 
-    Tiebreak: alias ascending, so runs are deterministic.
+    ``key_fn`` controls how alerts are grouped. When ``None`` (default),
+    alerts are grouped by their raw ``Alias``. Pass a function returning
+    a coarser key (e.g. ``lambda a: coarse_alias(a.alias)``) to collapse
+    Datadog per-instance fragmentation. The ``NoiseRow.alias`` field
+    then holds that coarser key.
+
+    Tiebreak: key ascending, so runs are deterministic.
     """
+    key = key_fn if key_fn is not None else (lambda a: a.alias)
+    groups: "dict[str, List[Alert]]" = defaultdict(list)
+    for a in alerts:
+        groups[key(a)].append(a)
+
     rows: List[NoiseRow] = []
-    for alias, group in group_by_alias(alerts).items():
+    for alias, group in groups.items():
         fires = len(group)
         ack_count = sum(1 for a in group if a.acknowledged)
         auto_closed_no_ack = sum(

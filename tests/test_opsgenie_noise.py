@@ -7,6 +7,7 @@ import pytest
 from context import lucille  # noqa: F401
 from lucille.opsgenie.io import Alert
 from lucille.opsgenie.noise import (
+    coarse_alias,
     compute_noise_rows,
     filter_by_min_fires,
     group_by_alias,
@@ -258,3 +259,101 @@ class TestSummarize:
         s = summarize(alerts, rows)
         assert s.window_start == early
         assert s.window_end == late
+
+
+# ---------------------------------------------------------------------------
+# coarse_alias
+# ---------------------------------------------------------------------------
+
+
+class TestCoarseAlias:
+    def test_extracts_datadog_monitor_id(self):
+        raw = "org_id:305115|metric:jaris.data_platform.pipelines.runs|monitor_id:143823196|#job:paysafe_msot_transformer"
+        assert coarse_alias(raw) == "dd:monitor_143823196"
+
+    def test_same_monitor_different_tags_collapse_together(self):
+        # This is the exact fragmentation we saw in the real CSV: one
+        # monitor_id spread across many #job:X variants.
+        a = "org_id:305115|metric:X|monitor_id:143823196|#job:jaris_shared"
+        b = "org_id:305115|metric:X|monitor_id:143823196|#job:paysafe"
+        c = "org_id:305115|metric:X|monitor_id:143823196|#job:hubspot"
+        assert coarse_alias(a) == coarse_alias(b) == coarse_alias(c)
+
+    def test_uuid_alias_passes_through_unchanged(self):
+        raw = "9c55c906-5ac6-0bda-9cf7-2558bf8de63e"
+        assert coarse_alias(raw) == raw
+
+    def test_uuid_with_trailing_epoch_suffix_passes_through(self):
+        # Seen in the wild: some UUIDs carry a trailing '-<ms-epoch>'.
+        raw = "5a5f72c3-49a5-40bd-867f-87e2f02e3887-1776631854809"
+        assert coarse_alias(raw) == raw
+
+    def test_empty_alias_passes_through(self):
+        assert coarse_alias("") == ""
+
+    def test_missing_monitor_id_passes_through(self):
+        # No 'monitor_id:' fragment at all \u2014 stays untouched.
+        raw = "org_id:305115|metric:foo|#service:ledger"
+        assert coarse_alias(raw) == raw
+
+    def test_non_numeric_monitor_id_falls_back_to_raw(self):
+        # Defensive: if the id isn't digits, don't invent a synthetic
+        # key that might collide with something else.
+        raw = "org_id:305115|monitor_id:not_a_number|#env:prod"
+        assert coarse_alias(raw) == raw
+
+    def test_metric_none_still_extracts(self):
+        # Real CSV had 'metric:None|monitor_id:71761688' rows.
+        raw = "org_id:305115|metric:None|monitor_id:71761688"
+        assert coarse_alias(raw) == "dd:monitor_71761688"
+
+
+# ---------------------------------------------------------------------------
+# compute_noise_rows with a key_fn
+# ---------------------------------------------------------------------------
+
+
+class TestComputeNoiseRowsWithKeyFn:
+    def test_key_fn_defaults_to_alias(self):
+        # Regression: passing no key_fn must behave exactly like before.
+        alerts = [_a(alias="x"), _a(alias="x"), _a(alias="y")]
+        rows = compute_noise_rows(alerts)
+        assert {r.alias: r.fires for r in rows} == {"x": 2, "y": 1}
+
+    def test_coarse_grouping_merges_datadog_fragments(self):
+        alerts = [
+            _a(alias="org_id:1|monitor_id:100|#a:1"),
+            _a(alias="org_id:1|monitor_id:100|#a:2"),
+            _a(alias="org_id:1|monitor_id:100|#a:3"),
+            _a(alias="org_id:1|monitor_id:200|#b:1"),
+            _a(alias="uuid-alone"),
+        ]
+        rows = compute_noise_rows(
+            alerts, key_fn=lambda a: coarse_alias(a.alias)
+        )
+        result = {r.alias: r.fires for r in rows}
+        assert result == {
+            "dd:monitor_100": 3,
+            "dd:monitor_200": 1,
+            "uuid-alone": 1,
+        }
+
+    def test_coarse_grouping_preserves_ack_and_teams(self):
+        # Ensure the aggregation math is per-group, not per-raw-alias:
+        # 3 fragments \u2192 1 coarse row, ack_count sums correctly.
+        alerts = [
+            _a(alias="org_id:1|monitor_id:100|#a:1", ack=True, team="DIP"),
+            _a(alias="org_id:1|monitor_id:100|#a:2", ack=False, team="DIP"),
+            _a(alias="org_id:1|monitor_id:100|#a:3", ack=True, team="OOT"),
+        ]
+        rows = compute_noise_rows(
+            alerts, key_fn=lambda a: coarse_alias(a.alias)
+        )
+        assert len(rows) == 1
+        r = rows[0]
+        assert r.alias == "dd:monitor_100"
+        assert r.fires == 3
+        assert r.ack_count == 2
+        assert r.ack_rate == pytest.approx(2 / 3)
+        # Teams are deduped and comma-joined, sorted alphabetically.
+        assert r.teams == "DIP, OOT"
