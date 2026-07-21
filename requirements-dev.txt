@@ -1,12 +1,9 @@
-# Development-only dependencies for lucille.
-# Includes everything in requirements.txt plus test/lint/coverage tools.
+# Development dependencies for lucille.
 #
-# Install with:  pip install -r requirements-dev.txt
+# The pins themselves now live in pyproject.toml's [project.optional-dependencies].dev.
+# This file is a thin pointer that installs both runtime and dev extras.
+#
+# Install with:
+#   pip install -r requirements-dev.txt
 
--r requirements.txt
-
-black==25.1.0
-coverage==7.9.1
-pytest==8.4.1
-pytest-cov==6.2.1
-pytest-timeout==2.4.0
+-e .[dev]

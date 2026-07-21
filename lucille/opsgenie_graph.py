@@ -316,7 +316,11 @@ def analyze_alert_status_breakdown(csv_file: str) -> dict:
 
 # Usage examples:
 
-if __name__ == "__main__":
+def main():
+    """CLI entry point. Kept as a named function so pyproject.toml can
+    declare a console script for it (``lucille-opsgenie-graph``) and so
+    it's callable/testable from other Python code.
+    """
     parser = argparse.ArgumentParser(description="Create graph from deployments CSV")
 
     parser.add_argument("-c", "--config", type=str, help="path to config file")
@@ -342,3 +346,7 @@ if __name__ == "__main__":
     except Exception as e:
         logging.error(f"Error during analysis: {e}")
         logging.error("Make sure the CSV file exists and the date format matches your parser")
+
+
+if __name__ == "__main__":
+    main()

@@ -6,3 +6,8 @@ __pycache__/
 htmlcov/
 .venv/
 .pytest_cache/
+
+# Setuptools editable-install byproducts (from `pip install -e .`).
+*.egg-info/
+build/
+dist/

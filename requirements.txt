@@ -1,19 +1,11 @@
 # Runtime dependencies for lucille.
 #
-# Development-only tools (pytest, black, coverage) live in requirements-dev.txt.
-# Everything here is imported by code under lucille/ (directly, or transitively
-# in a load-bearing way — e.g. openpyxl for df.to_excel).
+# The pins themselves now live in pyproject.toml (single source of truth).
+# This file exists only so `pip install -r requirements.txt` still works
+# for anyone with that in their muscle memory.
 #
-# To regenerate exact pins after upgrading:
-#   python -m venv .venv-fresh && source .venv-fresh/bin/activate
-#   pip install -r requirements.txt && pip freeze > requirements.lock.txt
+# Install with:
+#   pip install -r requirements.txt   # runtime only
+#   pip install -r requirements-dev.txt  # + pytest/black/coverage
 
-boto3==1.42.97
-matplotlib==3.9.4
-numpy==2.0.2
-openpyxl==3.1.2
-pandas==2.3.0
-python-dateutil==2.9.0.post0
-PyYAML==6.0.2
-requests==2.32.3
-seaborn==0.13.2
+-e .

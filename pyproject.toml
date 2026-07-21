@@ -1,0 +1,99 @@
+# Packaging metadata for lucille.
+#
+# Why this file exists:
+#   - Declares lucille as a proper Python package so `pip install -e .` works.
+#   - Makes dependency versions a single source of truth (previously duplicated
+#     in requirements*.txt). The requirements files are now thin pointers
+#     into the extras defined here.
+#   - Provides `lucille-*` console scripts as an ergonomic alternative to
+#     `python -m lucille.<module>`. The Makefile still uses `python -m` for
+#     zero-install-required operation; console scripts are opt-in.
+#
+# To install into the shared basic-pandas venv:
+#   ~/venv/basic-pandas/bin/pip install -e ".[dev]"
+
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "lucille"
+version = "0.1.0"
+description = "Engineering-metrics tooling: DORA, AI adoption, OpsGenie noise, Jira cycle time."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Proprietary" }
+
+# Exact pins duplicated from the (now-thin) requirements.txt.
+# Treating lucille as an application, not a library: reproducible builds
+# beat "loose bounds so downstream users get flexibility" \u2014 there are no
+# downstream users.
+dependencies = [
+    "boto3==1.42.97",
+    "matplotlib==3.9.4",
+    "numpy==2.0.2",
+    "openpyxl==3.1.2",
+    "pandas==2.3.0",
+    "python-dateutil==2.9.0.post0",
+    "PyYAML==6.0.2",
+    "requests==2.32.3",
+    "seaborn==0.13.2",
+]
+
+
+[project.optional-dependencies]
+# Everything needed to run the test suite, linters, and coverage. Kept as
+# an "extras" install so CI / dev machines can `pip install -e ".[dev]"`
+# and production installs (if we ever have one) get the leaner base set.
+dev = [
+    "black==25.1.0",
+    "coverage==7.9.1",
+    "pytest==8.4.1",
+    "pytest-cov==6.2.1",
+    "pytest-timeout==2.4.0",
+]
+
+
+[project.scripts]
+# Console scripts \u2014 one per Makefile-invoked module. Naming convention:
+# ``lucille-<dashed-module-tail>``. The Makefile itself keeps using
+# ``python -m ...`` so it works without a pip install; these scripts are
+# purely an ergonomic upgrade for interactive shell use.
+lucille-ai-metrics                 = "lucille.ai_metrics.main:main"
+lucille-deploy-history             = "lucille.github.deploy_history:main"
+lucille-fetch-security-alerts      = "lucille.github.fetch_github_security_alerts:main"
+lucille-pr-analyzer                = "lucille.github.pr_analyzer:main"
+lucille-active-sprints             = "lucille.jira.active_sprints:main"
+lucille-epic-completion            = "lucille.jira.epic_completion:main"
+lucille-epic-effort-summary        = "lucille.jira.epic_effort_summary:main"
+lucille-filter-epics               = "lucille.jira.filter_epics:main"
+lucille-jira-cycle-time            = "lucille.jira.jira_cycle_time_analysis:main"
+lucille-stale-tickets-to-csv       = "lucille.jira.stale_tickets_to_csv:main"
+lucille-sup-cycle-time             = "lucille.jira.sup_cycle_time:main"
+lucille-sup-ticket-volume          = "lucille.jira.sup_ticket_volume:main"
+lucille-lead-time-for-changes      = "lucille.lead_time_for_changes:main"
+lucille-lead-time-report           = "lucille.lead_time_report:main"
+lucille-opsgenie-alerts-chart      = "lucille.opsgenie_alerts_chart_weeks:main"
+lucille-opsgenie-graph             = "lucille.opsgenie_graph:main"
+lucille-opsgenie-noise             = "lucille.opsgenie.main:main"
+lucille-publish                    = "lucille.publish:main"
+lucille-reformat-slack-scrape      = "lucille.reformat_slack_scrape:main"
+lucille-datadog-trends-csv         = "lucille.vendor_spend.datadog_trends_csv:main"
+lucille-fetch-vendor-spend         = "lucille.vendor_spend.fetch_vendor_spend:main"
+lucille-graph-vendor-spend         = "lucille.vendor_spend.graph_vendor_spend:main"
+
+
+[tool.setuptools.packages.find]
+# Explicit include prevents setuptools from ever accidentally packaging the
+# top-level ``tests/`` directory (or anything else that lives next to
+# ``lucille/`` in the repo root).
+include = ["lucille*"]
+
+
+[tool.pytest.ini_options]
+# tests/context.py already handles sys.path for the "run tests without
+# installing" case, so no rootdir/pythonpath override is needed. This block
+# is here so future test-configuration ends up in pyproject rather than a
+# stray pytest.ini.
+testpaths = ["tests"]
