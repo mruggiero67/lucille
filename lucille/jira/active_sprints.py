@@ -203,7 +203,7 @@ def write_csv(data: List[Dict], filepath: str, fieldnames: List[str]) -> None:
 def main(config_path: str) -> None:
     """Main execution function."""
     # Set up logging
-    setup_logging(log_level="DEBUG")
+    setup_logging(level="DEBUG")
 
     # Load configuration
     config = load_yaml_config(config_path)
