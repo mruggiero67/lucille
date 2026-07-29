@@ -27,6 +27,10 @@ epic_completion: active_sprints
 prs:
 	python -m lucille.github.pr_analyzer ~/bin/github_config.yaml
 
+pr_review_latency:
+	python -m lucille.github.pr_review_latency --github-config ~/bin/github_config.yaml
+	python -m lucille.github.pr_review_latency_top_repos --csv $(2X2_DIR)/pull_requests/$(DATE_PREFIX)_pr_review_latency.csv
+
 active_sprints:
 	python -m lucille.jira.active_sprints ~/bin/jira_epic_config.yaml
 
